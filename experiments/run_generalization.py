@@ -24,7 +24,8 @@ from deep.dqn import DQNAgent, DQNConfig  # noqa: E402
 from env.maps import generate_map_set  # noqa: E402
 from experiments.evaluate import evaluate_on_maps, summarize  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_bar_with_error, plot_lines_with_error, write_text  # noqa: E402
-from experiments.run_deep import TEST_SET_SEED, TRAIN_POOL_SEED, train_one  # noqa: E402
+from experiments.run_deep import (TEST_SET_SEED, TRAIN_POOL_SEED, check_reward_args, reward_config_of,  # noqa: E402
+                                  train_one, train_tag, variant_tag)
 from utils.io import save_config_json, save_csv  # noqa: E402
 
 BASELINE_NAMES = ["random_walk", "zigzag", "greedy_bfs"]
@@ -47,8 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--shaping-coef", type=float, default=None)
     parser.add_argument("--n-envs", type=int, default=1, help="số môi trường song song trong một tiến trình")
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--keep-best", action="store_true",
+                        help="giữ mô hình có kết quả đánh giá định kỳ tốt nhất (tập kiểm định)")
     parser.add_argument("--train-freq", type=int, default=4, help="cập nhật mạng mỗi N bước môi trường")
-    parser.add_argument("--tag", default="", help="hậu tố thư mục/hình để tách các cấu hình (ví dụ _v4)")
+    parser.add_argument("--tag", default="", help="hậu tố thêm vào tên thư mục/hình (các tùy chọn khác mặc định "
+                                                    "như mask/ego/reward/n-envs đã tự được thêm)")
     add_common_args(parser, "results/generalization")
     parser.set_defaults(seeds=[0, 1, 2])
     return parser
@@ -60,21 +64,22 @@ def dqn_cfg(timesteps: int, seed: int, quick: bool, device: str, args: argparse.
                     eval_every_steps=max(1, timesteps // 20), eval_episodes=2 if quick else 20,
                     log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)), device=device,
                     action_mask=args.action_mask, egocentric=args.egocentric, n_envs=args.n_envs,
-                    batch_size=args.batch_size, train_freq=args.train_freq, seed=seed)
+                    batch_size=args.batch_size, train_freq=args.train_freq, keep_best=args.keep_best, seed=seed)
     return cfg.__dict__.copy()
 
 
 def evaluate_agents(test_maps: list[np.ndarray], dqn_dirs: list[tuple[int, Path]], seeds: list[int],
-                    device: str = "auto") -> pd.DataFrame:
+                    device: str = "auto", reward_config: Any = None) -> pd.DataFrame:
     """Mọi agent trên cùng tập bản đồ test; mỗi seed cho một giá trị trung bình (để lấy std qua seed)."""
     rows = []
     for seed in seeds:
         for name in BASELINE_NAMES:
-            df = evaluate_on_maps(make_baseline(name, seed=seed), test_maps, EPISODES_PER_TEST_MAP, seed=seed)
+            df = evaluate_on_maps(make_baseline(name, seed=seed), test_maps, EPISODES_PER_TEST_MAP, seed=seed,
+                                  reward_config=reward_config)
             rows.append({"agent": name, "seed": seed, **summarize(df).iloc[0].to_dict()})
     for seed, log_dir in dqn_dirs:
         agent = DQNAgent.load(log_dir / "model.pt", device=device)
-        df = evaluate_on_maps(agent, test_maps, EPISODES_PER_TEST_MAP, seed=seed)
+        df = evaluate_on_maps(agent, test_maps, EPISODES_PER_TEST_MAP, seed=seed, reward_config=reward_config)
         rows.append({"agent": "dqn", "seed": seed, **summarize(df).iloc[0].to_dict()})
     return pd.DataFrame(rows)
 
@@ -113,7 +118,8 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
     per_seed = []
     for density, test_maps in test_sets.items():
         dirs = [(seed, log_dir) for d, seed, log_dir in meta if d == density]
-        per_seed.append(evaluate_agents(test_maps, dirs, seeds, args.device).assign(density=density))
+        per_seed.append(evaluate_agents(test_maps, dirs, seeds, args.device, reward_config_of(vars(args)))
+                        .assign(density=density))
     table = across_seeds(pd.concat(per_seed, ignore_index=True), ["density", "agent"])
     plot_lines_with_error(table, "density",
                           [("coverage_mean", "coverage_mean_sd", "tỷ lệ đã dọn"),
@@ -150,7 +156,8 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
         if pool is not None:
             splits["train (đã gặp)"] = pool[:n_test]
         for split, maps in splits.items():
-            df = evaluate_on_maps(agent, maps, EPISODES_PER_TEST_MAP, seed=seed)
+            df = evaluate_on_maps(agent, maps, EPISODES_PER_TEST_MAP, seed=seed,
+                                  reward_config=reward_config_of(vars(args)))
             rows.append({"K": "∞" if k == 0 else str(k), "split": split, "seed": seed, **summarize(df).iloc[0].to_dict()})
     table = across_seeds(pd.DataFrame(rows), ["K", "split"])
     plot_bar_with_error(table, "K", "coverage_mean", "coverage_mean_sd", out / "figures" / f"e4_generalization_{h}x{w}{args.tag}.png",
@@ -161,7 +168,11 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    check_reward_args(parser, args)
+    # Tên thư mục/hình tự gồm mọi tùy chọn khác mặc định, để các cấu hình không ghi đè kết quả của nhau.
+    args.tag = variant_tag(vars(args)) + train_tag(args) + args.tag
     out = resolve_out(args.out)
     seeds = args.seeds[:1] if args.quick else args.seeds
     timesteps = min(args.timesteps, 1_200) if args.quick else args.timesteps

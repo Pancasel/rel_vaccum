@@ -59,6 +59,12 @@ def make_env(spec: dict[str, Any]) -> gymnasium.Env:
     return HideCleanedChannel(env) if spec.get("hide") else env
 
 
+# Cờ dòng lệnh -> (trường DQNConfig, hậu tố tên thư mục), chỉ thêm vào tên khi khác mặc định.
+TRAIN_TAGS = {"learning_rate": ("learning_rate", "lr"), "target_update": ("target_update_interval", "tu"),
+              "buffer_size": ("buffer_size", "buf"), "n_envs": ("n_envs", "ne"), "batch_size": ("batch_size", "bs"),
+              "train_freq": ("train_freq", "tf")}
+
+
 def env_tag(spec: dict[str, Any]) -> str:
     """Tên thư mục kết quả, ví dụ 'furniture_8x8', 'rand8x8_d0.15_K0', thêm hậu tố nếu ẩn kênh/đổi reward."""
     if spec.get("random"):
@@ -66,17 +72,39 @@ def env_tag(spec: dict[str, Any]) -> str:
         tag = f"rand{h}x{w}_d{density:g}_K{len(spec['pool']) if spec.get('pool') else 0}"
     else:
         tag = spec["map"] + (f"_s{spec['start'][0]}{spec['start'][1]}" if spec.get("start") else "")
-    if spec.get("hide"):
+    return tag + variant_tag(spec)
+
+
+def variant_tag(options: dict[str, Any]) -> str:
+    """Hậu tố cho các tùy chọn môi trường/cải tiến (ẩn kênh, reward, shaping, mask, egocentric)."""
+    tag = ""
+    if options.get("hide"):
         tag += "_hide"
-    if spec["reward"] != "dense":
-        tag += f"_{spec['reward']}"
-    if spec.get("shaping_coef") is not None:
-        tag += f"_sc{spec['shaping_coef']:g}"
-    if spec.get("action_mask"):
+    if options["reward"] != "dense":
+        tag += f"_{options['reward']}"
+    if options.get("shaping_coef") is not None:
+        tag += f"_sc{options['shaping_coef']:g}"
+    if options.get("action_mask"):
         tag += "_mask"
-    if spec.get("egocentric"):
+    if options.get("egocentric"):
         tag += "_ego"
     return tag
+
+
+def train_tag(args: argparse.Namespace) -> str:
+    """Hậu tố cho các siêu tham số huấn luyện khác mặc định, để các lần chạy khác nhau không ghi đè nhau."""
+    tag = ""
+    for flag, (field_name, short) in TRAIN_TAGS.items():
+        value = getattr(args, flag, None)
+        if value is not None and value != getattr(DQNConfig, field_name):
+            tag += f"_{short}{value:g}"
+    return tag
+
+
+def check_reward_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """--shaping-coef chỉ có nghĩa với --reward shaped (tránh vô tình bật shaping cho preset khác)."""
+    if args.shaping_coef is not None and args.reward != "shaped":
+        parser.error("--shaping-coef chỉ dùng được với --reward shaped.")
 
 
 def final_evaluation(agent: Any, spec: dict[str, Any], seed: int, test_maps: list[np.ndarray] | None) -> pd.DataFrame:
@@ -155,6 +183,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="hệ số shaping thế năng (dùng với --reward shaped), mặc định 1.0")
     parser.add_argument("--n-envs", type=int, default=1, help="số môi trường song song trong một tiến trình")
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--keep-best", action="store_true",
+                        help="giữ mô hình có kết quả đánh giá định kỳ tốt nhất (tập kiểm định)")
     parser.add_argument("--train-freq", type=int, default=4, help="cập nhật mạng mỗi N bước môi trường")
     parser.add_argument("--checkpoints", type=int, nargs="*", default=None,
                         help="các bước lưu mô hình (mặc định 0, 1/4 và toàn bộ số bước)")
@@ -180,14 +210,17 @@ def build_spec(args: argparse.Namespace) -> tuple[dict[str, Any], list[np.ndarra
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    check_reward_args(parser, args)
     out = resolve_out(args.out)
     spec, test_maps = build_spec(args)
     seeds = args.seeds[:1] if args.quick else args.seeds
     timesteps = min(args.timesteps, 1_500) if args.quick else args.timesteps
     eval_every = args.eval_every or max(1, timesteps // 40)
     checkpoints = args.checkpoints if args.checkpoints is not None else [0, timesteps // 4, timesteps]
-    run_dir = out / "dqn" / env_tag(spec)
+    tag = env_tag(spec) + train_tag(args)
+    run_dir = out / "dqn" / tag
     tasks = []
     for seed in seeds:
         cfg = DQNConfig(total_timesteps=timesteps, learning_rate=args.learning_rate,
@@ -197,7 +230,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                         log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)),
                         checkpoint_steps=tuple(checkpoints), device=args.device, action_mask=args.action_mask,
                         egocentric=args.egocentric, n_envs=args.n_envs, batch_size=args.batch_size,
-                        train_freq=args.train_freq, seed=seed)
+                        train_freq=args.train_freq, keep_best=args.keep_best, seed=seed)
         tasks.append({"spec": spec, "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / f"seed{seed}"),
                       "test_maps": test_maps})
     results = run_parallel(train_one, tasks, workers=args.workers)
@@ -210,8 +243,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     figure = plot_learning_curves(
         eval_df, "global_step", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
                                  ("steps_mean", "số bước (chính sách tham lam)")], "algo",
-        out / "figures" / f"deep_learning_curve_{env_tag(spec)}.png",
-        f"DQN trên {env_tag(spec)}", "bước huấn luyện", hlines={"steps_mean": refs})
+        out / "figures" / f"deep_learning_curve_{tag}.png",
+        f"DQN trên {tag}", "bước huấn luyện", hlines={"steps_mean": refs})
     save_config_json({"args": vars(args), "spec": {k: v for k, v in spec.items() if k not in ("pool", "exclude")},
                       "n_test_maps": len(test_maps) if test_maps else 0, "seeds": seeds, "timesteps": timesteps},
                      run_dir / "config.json")

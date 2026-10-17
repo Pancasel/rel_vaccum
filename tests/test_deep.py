@@ -216,3 +216,40 @@ def test_vectorized_update_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(agent, "_learn", lambda buf: calls.append(1) or original(buf))
     agent.train(functools.partial(VacuumEnv, "empty_3x3"), tmp_path / "count")
     assert len(calls) == (400 - 80) // 4
+
+
+def test_vectorized_steps_match_single_env_schedule(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """total_timesteps không chia hết cho n_envs: không đi quá số bước, target/checkpoint đúng mốc."""
+    agent = DQNAgent((3, 3, 3), DQNConfig(total_timesteps=1000, learning_starts=100, n_envs=3, train_freq=1,
+                                          target_update_interval=2, batch_size=8, buffer_size=500,
+                                          eval_every_steps=1000, eval_episodes=1, checkpoint_steps=(500,)))
+    copies = []
+    original = agent.target.load_state_dict
+    monkeypatch.setattr(agent.target, "load_state_dict", lambda sd: copies.append(1) or original(sd))
+    logs = agent.train(functools.partial(VacuumEnv, "empty_3x3"), tmp_path / "sched")
+    assert list(logs["eval"]["global_step"]) == [1000]
+    assert logs["episodes"]["global_step"].max() <= 1000
+    assert len(copies) == 1000 // 2
+    assert (tmp_path / "sched" / "checkpoints" / "step500.pt").exists()
+
+
+def test_learning_starts_must_cover_batch() -> None:
+    with pytest.raises(ValueError):
+        DQNConfig(learning_starts=100, batch_size=512)
+
+
+def test_keep_best_restores_best_checkpoint(tmp_path: Path) -> None:
+    cfg = DQNConfig(total_timesteps=600, learning_starts=50, batch_size=16, buffer_size=1000, eval_every_steps=150,
+                    eval_episodes=2, keep_best=True)
+    agent = DQNAgent((3, 3, 3), cfg)
+    logs = agent.train(functools.partial(VacuumEnv, "empty_3x3"), tmp_path / "best")
+    assert (tmp_path / "best" / "best.pt").exists() and (tmp_path / "best" / "last.pt").exists()
+    evals = logs["eval"]
+    assert evals["selected"].sum() == 1
+    chosen = evals[evals["selected"]].iloc[0]
+    best_score = max(zip(evals["success_rate"], evals["coverage_mean"], -evals["steps_mean"]))
+    assert (chosen["success_rate"], chosen["coverage_mean"], -chosen["steps_mean"]) == best_score
+    model = DQNAgent.load(tmp_path / "best" / "model.pt", device="cpu")
+    best = DQNAgent.load(tmp_path / "best" / "best.pt", device="cpu")
+    for a, b in zip(model.online.state_dict().values(), best.online.state_dict().values()):
+        assert torch.equal(a, b)

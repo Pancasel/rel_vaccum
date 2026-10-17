@@ -72,8 +72,11 @@ class DQNConfig:
     # Cải tiến v4: quan sát lấy robot làm tâm (xem env.grid_utils.egocentric_view) để khái quát sang phòng lạ.
     egocentric: bool = False
     # Số môi trường chạy song song trong một tiến trình: chọn hành động theo lô (nhanh hơn nhiều trên GPU).
-    # Tỷ lệ "số lần cập nhật mạng / số bước môi trường" giữ nguyên 1/train_freq nên thuật toán không đổi.
+    # Các mốc (cập nhật mạng, target, đánh giá, checkpoint) vẫn tính theo từng bước môi trường.
     n_envs: int = 1
+    # Chọn mô hình theo tập kiểm định: giữ trọng số có kết quả đánh giá định kỳ tốt nhất (đánh giá trên
+    # phòng ngẫu nhiên tách biệt tập test) thay vì trọng số ở bước cuối, vốn có thể vừa dao động xuống.
+    keep_best: bool = False
     seed: int = 0
 
     def __post_init__(self) -> None:
@@ -92,6 +95,8 @@ class DQNConfig:
             raise ValueError("epsilon_decay_fraction phải trong (0, 1].")
         if self.n_envs < 1:
             raise ValueError("n_envs phải >= 1.")
+        if self.learning_starts < self.batch_size:
+            raise ValueError("learning_starts phải >= batch_size (buffer cần đủ mẫu cho lô đầu tiên).")
         self.checkpoint_steps = tuple(int(s) for s in self.checkpoint_steps)
 
 
@@ -191,9 +196,16 @@ class DQNAgent:
         """ε-greedy theo mạng online; epsilon=0 (mặc định) là chính sách tham lam để đánh giá."""
         if epsilon > 0.0 and self.rng.random() < epsilon:
             return self.random_action(obs)
-        q = self.q_values(obs)
-        valid = self._valid_actions(obs)
-        return int(valid[np.argmax(q[valid])])
+        return int(self._greedy_batch(self.preprocess(obs)[None])[0])
+
+    def _greedy_batch(self, net_obs: np.ndarray) -> np.ndarray:
+        """Hành động tham lam cho một lô đầu vào mạng (B, 3, H', W'), có che hành động nếu bật mask."""
+        x = torch.as_tensor(net_obs, dtype=torch.float32)
+        with torch.no_grad():
+            q = self.online(x.to(self.device))
+            if self.cfg.action_mask:
+                q = q.masked_fill(~valid_action_mask(x).to(self.device), MASKED_Q)
+        return q.argmax(dim=1).cpu().numpy()
 
     # ------------------------------------------------------------------ một bước học
     def _learn(self, buffer: ReplayBuffer) -> dict[str, torch.Tensor]:
@@ -223,10 +235,19 @@ class DQNAgent:
         """Trung bình các số đo của nhiều lần cập nhật (một lần đồng bộ GPU duy nhất)."""
         return {k: float(torch.stack([m[k] for m in pending]).mean().item()) for k in pending[0]}
 
+    @staticmethod
+    def _eval_score(row: dict[str, Any]) -> tuple[float, float, float]:
+        """Thứ tự ưu tiên khi chọn mô hình: tỷ lệ dọn xong, rồi tỷ lệ đã dọn, rồi ít bước hơn."""
+        return (float(row["success_rate"]), float(row["coverage_mean"]), -float(row["steps_mean"]))
+
     # ------------------------------------------------------------------ vòng huấn luyện
     def train(self, env_factory: Callable[[], gymnasium.Env], log_dir: str | os.PathLike,
               eval_env_factory: Callable[[], gymnasium.Env] | None = None) -> dict[str, pd.DataFrame]:
         """Huấn luyện theo Algorithm 1 của Mnih et al. (2015), ghi CSV vào log_dir.
+
+        Chạy n_envs môi trường song song (n_envs = 1 là trường hợp thường): mỗi vòng chọn hành động tham
+        lam cho cả lô một lần, rồi đi lần lượt từng môi trường. `t` đếm TỪNG bước môi trường, nên cập nhật
+        mạng, chép target network, đánh giá và checkpoint xảy ra đúng ở các mốc như bản một môi trường.
 
         Args:
             env_factory: tạo môi trường huấn luyện.
@@ -241,88 +262,7 @@ class DQNAgent:
         log_path.mkdir(parents=True, exist_ok=True)
         eval_factory = eval_env_factory or env_factory
         set_global_seed(cfg.seed)
-        env = env_factory()
-        if env.observation_space.shape != self.obs_shape:
-            raise ValueError(f"Env có observation {env.observation_space.shape}, agent cần {self.obs_shape}.")
-        if cfg.n_envs > 1:
-            return self._train_vectorized(env_factory, log_path, eval_factory)
-        buffer = ReplayBuffer(cfg.buffer_size, self.net_shape, seed=cfg.seed)
-        episode_rows: list[dict[str, Any]] = []
-        loss_rows: list[dict[str, Any]] = []
-        eval_rows: list[dict[str, Any]] = []
-        pending: list[dict[str, torch.Tensor]] = []
-        if 0 in cfg.checkpoint_steps:
-            self.save(log_path / "checkpoints" / "step0.pt")
-
-        obs, info = env.reset(seed=cfg.seed)
-        episode, ep_return, t0 = 0, 0.0, time.monotonic()
-        for t in range(1, cfg.total_timesteps + 1):
-            epsilon = linear_epsilon(t - 1, cfg)
-            # "Choose A from S using policy derived from Q (ε-greedy)"; giai đoạn đầu đi ngẫu nhiên để lấp buffer.
-            explore = t <= cfg.learning_starts
-            action = self.random_action(obs) if explore else self.act(obs, epsilon=epsilon)
-            # "Take action A, observe R, S'"
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            # Chỉ lưu terminated, không lưu truncated (C2.11); lưu đúng dạng đầu vào của mạng.
-            buffer.add(self.preprocess(obs), action, reward, self.preprocess(next_obs), terminated)
-            ep_return += reward
-            obs = next_obs
-            if terminated or truncated:
-                episode += 1
-                episode_rows.append({"global_step": t, "episode": episode, "return_undiscounted": ep_return,
-                                     "coverage": info["coverage"], "steps": info["steps"],
-                                     "terminated": terminated, "truncated": truncated, "epsilon": epsilon})
-                obs, info = env.reset()
-                ep_return = 0.0
-            if t > cfg.learning_starts and t % cfg.train_freq == 0:
-                pending.append(self._learn(buffer))
-            if t % cfg.target_update_interval == 0:
-                # Cập nhật target network: chép cứng trọng số online (Mnih 2015).
-                self.target.load_state_dict(self.online.state_dict())
-            if t % cfg.log_every_steps == 0 and pending:
-                loss_rows.append({"global_step": t, **self._mean_metrics(pending),
-                                  "wall_time_s": time.monotonic() - t0})
-                pending = []
-            if t % cfg.eval_every_steps == 0 or t == cfg.total_timesteps:
-                summary = summarize(evaluate(self, eval_factory, cfg.eval_episodes, seed=EVAL_SEED_OFFSET + cfg.seed,
-                                             gamma=cfg.gamma))
-                eval_rows.append({"global_step": t, "episodes_done": episode, **summary.iloc[0].to_dict()})
-            if t in cfg.checkpoint_steps:
-                self.save(log_path / "checkpoints" / f"step{t}.pt")
-
-        return self._finish(log_path, episode_rows, loss_rows, eval_rows)
-
-    def _finish(self, log_path: Path, episode_rows: list[dict[str, Any]], loss_rows: list[dict[str, Any]],
-                eval_rows: list[dict[str, Any]]) -> dict[str, pd.DataFrame]:
-        """Ghi các CSV log và mô hình cuối."""
-        logs = {"episodes": pd.DataFrame(episode_rows), "losses": pd.DataFrame(loss_rows),
-                "eval": pd.DataFrame(eval_rows)}
-        save_csv(logs["episodes"], log_path / "train_episodes.csv")
-        save_csv(logs["losses"], log_path / "train_losses.csv")
-        save_csv(logs["eval"], log_path / "eval.csv")
-        self.save(log_path / "model.pt")
-        return logs
-
-    def _greedy_batch(self, net_obs: np.ndarray) -> np.ndarray:
-        """Hành động tham lam cho một lô đầu vào mạng (B, 3, H', W'), có che hành động nếu bật mask."""
-        x = torch.as_tensor(net_obs, dtype=torch.float32)
-        with torch.no_grad():
-            q = self.online(x.to(self.device))
-            if self.cfg.action_mask:
-                q = q.masked_fill(~valid_action_mask(x).to(self.device), MASKED_Q)
-        return q.argmax(dim=1).cpu().numpy()
-
-    def _train_vectorized(self, env_factory: Callable[[], gymnasium.Env], log_path: Path,
-                          eval_factory: Callable[[], gymnasium.Env]) -> dict[str, pd.DataFrame]:
-        """Cùng thuật toán, nhưng chạy n_envs môi trường song song và chọn hành động theo lô.
-
-        Mỗi vòng lặp đi một bước ở cả n_envs môi trường (n_envs transition vào buffer). Số lần cập
-        nhật mạng, chép target network, đánh giá và checkpoint được tính theo TỔNG số bước môi trường
-        vượt qua các mốc, nên tỷ lệ cập nhật/bước và lịch ε giữ nguyên như bản một môi trường.
-        """
-        cfg = self.cfg
-        n = cfg.n_envs
-        envs = [env_factory() for _ in range(n)]
+        envs = [env_factory() for _ in range(cfg.n_envs)]
         for env in envs:
             if env.observation_space.shape != self.obs_shape:
                 raise ValueError(f"Env có observation {env.observation_space.shape}, agent cần {self.obs_shape}.")
@@ -331,26 +271,31 @@ class DQNAgent:
         loss_rows: list[dict[str, Any]] = []
         eval_rows: list[dict[str, Any]] = []
         pending: list[dict[str, torch.Tensor]] = []
+        best_score: tuple[float, float, float] | None = None
+        best_step: int | None = None
         if 0 in cfg.checkpoint_steps:
             self.save(log_path / "checkpoints" / "step0.pt")
-        obs = [env.reset(seed=cfg.seed * 1000 + i)[0] for i, env in enumerate(envs)]
-        net_obs = np.stack([self.preprocess(o) for o in obs])
-        returns = np.zeros(n)
+
+        obs = [env.reset(seed=cfg.seed + 1000 * i)[0] for i, env in enumerate(envs)]
+        net_obs = np.stack([self.preprocess(o) for o in obs])  # đầu vào mạng, giữ lại để không tính lại
+        returns = np.zeros(cfg.n_envs)
         episode, t, t0 = 0, 0, time.monotonic()
-
-        def crossed(prev: int, now: int, every: int) -> bool:
-            return now // every > prev // every
-
         while t < cfg.total_timesteps:
-            prev, t = t, t + n
-            epsilon = linear_epsilon(prev, cfg)
-            greedy = self._greedy_batch(net_obs) if prev >= cfg.learning_starts else None
+            # Giai đoạn đầu đi ngẫu nhiên để lấp buffer; chỉ tính Q khi lô này có bước cần đến nó.
+            greedy = self._greedy_batch(net_obs) if t + cfg.n_envs > cfg.learning_starts else None
             for i, env in enumerate(envs):
-                explore = greedy is None or self.rng.random() < epsilon
+                if t == cfg.total_timesteps:
+                    break
+                t += 1
+                epsilon = linear_epsilon(t - 1, cfg)
+                # "Choose A from S using policy derived from Q (ε-greedy)" (cùng thứ tự rút số ngẫu nhiên như act()).
+                explore = t <= cfg.learning_starts or (epsilon > 0.0 and self.rng.random() < epsilon)
                 action = self.random_action(obs[i]) if explore else int(greedy[i])
+                # "Take action A, observe R, S'"
                 next_obs, reward, terminated, truncated, info = env.step(action)
                 next_net = self.preprocess(next_obs)
-                buffer.add(net_obs[i], action, reward, next_net, terminated)  # chỉ lưu terminated (C2.11)
+                # Chỉ lưu terminated, không lưu truncated (C2.11); lưu đúng dạng đầu vào của mạng.
+                buffer.add(net_obs[i], action, reward, next_net, terminated)
                 returns[i] += reward
                 if terminated or truncated:
                     episode += 1
@@ -361,23 +306,39 @@ class DQNAgent:
                     next_obs, _ = env.reset()
                     next_net = self.preprocess(next_obs)
                 obs[i], net_obs[i] = next_obs, next_net
-            low = max(prev, cfg.learning_starts)
-            for _ in range(max(0, t // cfg.train_freq - low // cfg.train_freq)):
-                pending.append(self._learn(buffer))
-            if crossed(prev, t, cfg.target_update_interval):
-                self.target.load_state_dict(self.online.state_dict())
-            if crossed(prev, t, cfg.log_every_steps) and pending:
-                loss_rows.append({"global_step": t, **self._mean_metrics(pending),
-                                  "wall_time_s": time.monotonic() - t0})
-                pending = []
-            if crossed(prev, t, cfg.eval_every_steps) or t >= cfg.total_timesteps:
-                summary = summarize(evaluate(self, eval_factory, cfg.eval_episodes, seed=EVAL_SEED_OFFSET + cfg.seed,
-                                             gamma=cfg.gamma))
-                eval_rows.append({"global_step": t, "episodes_done": episode, **summary.iloc[0].to_dict()})
-            for step in cfg.checkpoint_steps:
-                if prev < step <= t:
-                    self.save(log_path / "checkpoints" / f"step{step}.pt")
-        return self._finish(log_path, episode_rows, loss_rows, eval_rows)
+                if t > cfg.learning_starts and t % cfg.train_freq == 0:
+                    pending.append(self._learn(buffer))
+                if t % cfg.target_update_interval == 0:
+                    # Cập nhật target network: chép cứng trọng số online (Mnih 2015).
+                    self.target.load_state_dict(self.online.state_dict())
+                if t % cfg.log_every_steps == 0 and pending:
+                    loss_rows.append({"global_step": t, **self._mean_metrics(pending),
+                                      "wall_time_s": time.monotonic() - t0})
+                    pending = []
+                if t % cfg.eval_every_steps == 0 or t == cfg.total_timesteps:
+                    summary = summarize(evaluate(self, eval_factory, cfg.eval_episodes,
+                                                 seed=EVAL_SEED_OFFSET + cfg.seed, gamma=cfg.gamma))
+                    eval_rows.append({"global_step": t, "episodes_done": episode, **summary.iloc[0].to_dict()})
+                    if cfg.keep_best and (best_score is None or self._eval_score(eval_rows[-1]) > best_score):
+                        best_score, best_step = self._eval_score(eval_rows[-1]), t
+                        self.save(log_path / "best.pt")
+                if t in cfg.checkpoint_steps:
+                    self.save(log_path / "checkpoints" / f"step{t}.pt")
+        if cfg.keep_best and best_step is not None:
+            # model.pt = bản tốt nhất trên tập kiểm định; last.pt = trọng số ở bước cuối (để đối chiếu).
+            self.save(log_path / "last.pt")
+            best = torch.load(log_path / "best.pt", map_location=self.device, weights_only=False)
+            self.online.load_state_dict(best["state_dict"])
+            self.target.load_state_dict(best["state_dict"])
+            for row in eval_rows:
+                row["selected"] = row["global_step"] == best_step
+        logs = {"episodes": pd.DataFrame(episode_rows), "losses": pd.DataFrame(loss_rows),
+                "eval": pd.DataFrame(eval_rows)}
+        save_csv(logs["episodes"], log_path / "train_episodes.csv")
+        save_csv(logs["losses"], log_path / "train_losses.csv")
+        save_csv(logs["eval"], log_path / "eval.csv")
+        self.save(log_path / "model.pt")
+        return logs
 
     # ------------------------------------------------------------------ lưu / đọc
     def save(self, path: str | os.PathLike) -> Path:
