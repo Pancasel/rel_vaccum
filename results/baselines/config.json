@@ -1,0 +1,30 @@
+{
+  "config": {
+    "maps": [
+      "empty_3x3",
+      "obstacle_4x4",
+      "furniture_8x8"
+    ],
+    "agents": [
+      "random_walk",
+      "zigzag",
+      "greedy_bfs"
+    ],
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "episodes": 20,
+    "start": null
+  },
+  "meta": {
+    "timestamp": "2026-10-17T10:34:19",
+    "git_commit": "b5d8a2c0cf52792c90294f1e09ecd8d4c470d6be",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cpu"
+  }
+}
