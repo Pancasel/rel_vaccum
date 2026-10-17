@@ -1,0 +1,11 @@
+.venv/
+.cache/
+.pytest_tmp/
+.pytest_cache/
+__pycache__/
+*.pyc
+results/**/*.pt
+results/**/*.zip
+results/**/*.mp4
+results/raw/
+.ipynb_checkpoints/
