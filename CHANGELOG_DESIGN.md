@@ -55,3 +55,14 @@ Nhật ký thay đổi thiết kế so với `PLAN_rel.md` / `IMPLEMENTATION_PLA
 - Reason: DQN huấn luyện trên phòng ngẫu nhiên 8x8 (500k bước, 5 seed) chỉ dọn 14% phòng chưa gặp; log cho thấy ~101/216 bước là va chạm — chính sách tham lam tất định đâm tường mãi khi ước lượng sai ở phòng lạ (trạng thái không đổi -> hành động không đổi). Đường cong đi ngang suốt 500k bước nên không phải do thiếu bước huấn luyện. Va chạm không bao giờ có ích, nên che đi không làm mất chính sách tối ưu.
 - Evidence/result: A/B trên phòng ngẫu nhiên 6x6 (150k bước, 2 seed, results/mask_ab/): không mask 31% đã dọn, 0% dọn xong, 36 va chạm/episode; có mask 69% đã dọn, 7% dọn xong, 0 va chạm. Vẫn kém greedy BFS (100%) — robot còn lặp qua lại giữa các ô đã dọn.
 - Proposed B8 row: | v3 | 2026-10-17 | Action masking cho DQN | DQN đâm tường mãi ở phòng chưa gặp | Phòng lạ 6x6: 31% -> 69% đã dọn; vẫn kém greedy BFS |
+
+## 2026-10-17 — Cải tiến v4: quan sát lấy robot làm tâm, huấn luyện song song, chọn mô hình theo tập kiểm định
+
+- Change:
+  - `DQNConfig.egocentric` / `--egocentric`: dịch observation (3, H, W) để robot luôn ở tâm ảnh (3, 2H-1, 2W-1); ngoài bản đồ coi là tường. Agent tự biến đổi bên trong, môi trường không đổi.
+  - `DQNConfig.n_envs` / `--n-envs`: nhiều môi trường trong một tiến trình, chọn hành động theo lô; `t` vẫn đếm từng bước môi trường nên mốc cập nhật/target/đánh giá giữ nguyên.
+  - Lô 256 mỗi 16 bước (cùng tỷ lệ dùng lại dữ liệu 16 mẫu/bước như lô 64 mỗi 4 bước) và bỏ đồng bộ GPU ở mỗi lần cập nhật: 3.23 -> 0.86 ms/bước.
+  - `DQNConfig.keep_best` / `--keep-best`: giữ trọng số có kết quả đánh giá định kỳ tốt nhất trên phòng ngẫu nhiên (tách biệt tập test); `model.pt` = bản tốt nhất, `last.pt` = bước cuối.
+- Reason: v3 (chỉ mask) chỉ dọn 37% phòng chưa gặp (8x8, 5 seed); mạng phải học lại cùng một quy tắc ở mọi vị trí. Đường cong v4 còn dao động giữa các lần đánh giá, cần chọn mô hình ổn định.
+- Evidence/result: A/B trên phòng ngẫu nhiên 8x8, 600k bước, 2 seed (results/v4_ab/): mask 60% đã dọn / 1% dọn xong; mask + egocentric 91% / 42%; mask + shaping (hệ số 2) 59% / 0%; mask + egocentric + shaping 89% / 33%. Chọn mask + egocentric (shaping không giúp thêm).
+- Proposed B8 row: | v4 | 2026-10-17 | Quan sát lấy robot làm tâm + huấn luyện song song + chọn mô hình theo tập kiểm định | DQN không khái quát sang phòng lạ (37%) | A/B 8x8: 60% -> 91% đã dọn, 1% -> 42% dọn xong |
