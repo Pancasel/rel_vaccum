@@ -31,11 +31,11 @@ def test_run_tabular(tmp_path: Path) -> None:
     from experiments import run_tabular
 
     run_tabular.main(["--quick", "--map", "empty_3x3", "--episodes", "300", "--out", str(tmp_path)])
-    run_dir = tmp_path / "dense" / "full" / "empty_3x3"
+    run_dir = tmp_path / "dense" / "full" / "empty_3x3_s00"
     assert (run_dir / "summary.csv").exists()
     assert (run_dir / "q_learning" / "seed0" / "checkpoints" / "final.pkl").exists()
-    assert (tmp_path / "figures" / "tabular_learning_curve_empty_3x3.png").exists()
-    assert (tmp_path / "figures" / "q_convergence_empty_3x3.png").exists()
+    assert (tmp_path / "figures" / "tabular_learning_curve_empty_3x3_s00.png").exists()
+    assert (tmp_path / "figures" / "q_convergence_empty_3x3_s00.png").exists()
 
 
 def test_run_state_explosion(tmp_path: Path) -> None:

@@ -43,7 +43,7 @@ MAX_GIF_FRAMES = 160  # giới hạn số khung để GIF nhẹ (< 5 MB)
 SMALL_MAP = "obstacle_4x4"
 SMALL_START = (0, 0)
 UNSEEN_SEED = 777
-DEFAULT_QTABLE = "results/tabular/dense/full/obstacle_4x4/q_learning/seed0/checkpoints"
+DEFAULT_QTABLE = "results/tabular/dense/full/obstacle_4x4_s00/q_learning/seed0/checkpoints"
 DEFAULT_DQN_MAP = "results/deep/dqn/furniture_8x8/seed0"
 DEFAULT_DQN_RANDOM = "results/deep/dqn/rand8x8_d0.15_K0_mask/seed0"  # bản có action masking (v3)
 

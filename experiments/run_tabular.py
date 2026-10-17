@@ -62,6 +62,15 @@ def train_one(algo: str, map_name: str, start: tuple[int, int] | None, reward: s
     return {"algo": algo, "seed": cfg["seed"], "train": train_log, "eval": eval_log, "final": final}
 
 
+def map_tag(map_name: str, start: tuple[int, int] | None) -> str:
+    """Tên bản đồ kèm điểm xuất phát ('obstacle_4x4_s00'; xuất phát ngẫu nhiên giữ nguyên tên).
+
+    Vì sao: bảng Q gắn với điểm xuất phát; thiếu hậu tố thì lượt xuất phát cố định và lượt
+    xuất phát ngẫu nhiên ghi đè kết quả của nhau (cùng quy ước với run_deep).
+    """
+    return map_name + (f"_s{start[0]}{start[1]}" if start is not None else "")
+
+
 def run_name(reward: str, state_mode: str) -> str:
     """Hậu tố tên hình: rỗng với cấu hình mặc định (dense, full) cho đúng tên trong kế hoạch."""
     return "" if (reward == "dense" and state_mode == "full") else f"_{reward}_{state_mode}"
@@ -94,11 +103,12 @@ def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start:
     eval_df = pd.concat([r["eval"].assign(seed=r["seed"], algo=r["algo"]) for r in results], ignore_index=True)
     refs = reference_steps(grid, start)
     tag = run_name(args.reward, args.state_mode)
+    name = map_tag(args.map, start)
     start_txt = f"xuất phát {start}" if start else "xuất phát ngẫu nhiên"
     paths = [plot_learning_curves(
         eval_df, "episode", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
                              ("steps_mean", "số bước (chính sách tham lam)")], "algo",
-        out_fig / f"tabular_learning_curve_{args.map}{tag}.png",
+        out_fig / f"tabular_learning_curve_{name}{tag}.png",
         f"Q-learning trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
         hlines={"steps_mean": refs})]
     if start is not None and args.state_mode == "full":
@@ -106,7 +116,7 @@ def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start:
         if v_star is not None:
             train_df = pd.concat([r["train"].assign(seed=r["seed"], algo=r["algo"]) for r in results],
                                  ignore_index=True)
-            paths.append(plot_q_convergence(train_df, v_star, out_fig / f"q_convergence_{args.map}{tag}.png",
+            paths.append(plot_q_convergence(train_df, v_star, out_fig / f"q_convergence_{name}{tag}.png",
                                             smooth=max(1, args.episodes // 400)))
     return paths
 
@@ -119,7 +129,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     episodes = max(20, args.episodes // 10) if args.quick else args.episodes
     eval_every = args.eval_every or max(1, episodes // 200)
     eval_episodes = args.eval_episodes or (1 if start is not None else 10)
-    run_dir = out / args.reward / args.state_mode / args.map
+    run_dir = out / args.reward / args.state_mode / map_tag(args.map, start)
     tasks = []
     for algo in args.algos:
         for seed in seeds:

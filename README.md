@@ -87,7 +87,7 @@ Hoặc từng thí nghiệm:
 |---|---|---|---|
 | Baseline | `python -m experiments.run_baselines` | `results/baselines/summary.csv` | < 1 phút |
 | Đáp án tối ưu (VI) | `python -m experiments.run_value_iteration` | `results/vi/*_summary.csv` | < 1 phút |
-| Q-learning | `python -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --workers 5` | `results/figures/tabular_learning_curve_obstacle_4x4.png`, `q_convergence_obstacle_4x4.png` | ~3 phút |
+| Q-learning | `python -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --workers 5` | `results/tabular/figures/tabular_learning_curve_obstacle_4x4_s00.png`, `q_convergence_obstacle_4x4_s00.png` | ~3 phút |
 | E7 + giới hạn tabular | `python -m experiments.run_state_explosion --workers 4` | `results/figures/state_explosion.png`, `tabular_scaling.png` | ~16 phút |
 | E1 tính Markov | `python -m experiments.run_ablation --exp markov --workers 5` | `results/ablation/figures/e1_markov_obstacle_4x4.png`, GIF | ~3 phút |
 | E2 thiết kế reward | `python -m experiments.run_ablation --exp reward --workers 5` | `results/ablation/figures/e2_reward_curves_obstacle_4x4.png`, GIF reward hacking | ~5 phút |

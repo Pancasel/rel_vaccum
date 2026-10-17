@@ -1,2 +1,0 @@
-algo,n_seeds,coverage_mean_avg,steps_mean_avg,success_rate_avg,redundancy_mean_avg,gap_pct_avg,coverage_mean_sd,steps_mean_sd,success_rate_sd,redundancy_mean_sd,gap_pct_sd
-q_learning,5,1.0,12.716,1.0,0.05507692307692309,0.1,0.0,0.07668115805072355,0.0,0.0058985506192864075,0.22360679774997896
