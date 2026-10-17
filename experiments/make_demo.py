@@ -45,7 +45,8 @@ SMALL_START = (0, 0)
 UNSEEN_SEED = 777
 DEFAULT_QTABLE = "results/tabular/dense/full/obstacle_4x4_s00/q_learning/seed0/checkpoints"
 DEFAULT_DQN_MAP = "results/deep/dqn/furniture_8x8/seed0"
-DEFAULT_DQN_RANDOM = "results/deep/dqn/rand8x8_d0.15_K0_mask/seed0"  # bản có action masking (v3)
+# Bản v4 (action mask + quan sát lấy robot làm tâm), seed 0.
+DEFAULT_DQN_RANDOM = "results/deep/dqn/rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16/seed0"
 
 
 def rollout(agent: Any, env: VacuumEnv, title: str, seed: int, start: tuple[int, int] | None,
@@ -116,7 +117,7 @@ def load_qtable(checkpoint_dir: Path, name: str) -> TabularAgent:
 def load_dqn(path: Path, hint: str) -> DQNAgent:
     if not path.exists():
         raise FileNotFoundError(f"Không thấy {path}. Hãy chạy trước: {hint}")
-    return DQNAgent.load(path)
+    return DQNAgent.load(path, device="cpu")  # suy luận rất nhẹ, không cần chiếm GPU/RAM của GPU
 
 
 def train_quick_models(model_dir: Path, map_name: str) -> dict[str, Path]:
@@ -130,7 +131,7 @@ def train_quick_models(model_dir: Path, map_name: str) -> dict[str, Path]:
     grid = get_map(map_name)
     dqn_map = DQNAgent((3, *grid.shape), DQNConfig(checkpoint_steps=(0, 150), **cfg))
     dqn_map.train(make_env_factory(map_name), model_dir / "dqn_map")
-    dqn_rand = DQNAgent((3, 8, 8), DQNConfig(action_mask=True, **cfg))
+    dqn_rand = DQNAgent((3, 8, 8), DQNConfig(action_mask=True, egocentric=True, **cfg))
     dqn_rand.train(functools.partial(RandomMapVacuumEnv, 8, 8, 0.15), model_dir / "dqn_random")
     return {"qtable": q_dir / "checkpoints", "dqn_map": model_dir / "dqn_map", "dqn_random": model_dir / "dqn_random"}
 
@@ -211,7 +212,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     if "unseen" in what:
         dqn = load_dqn(paths["dqn_random"] / "model.pt",
-                       "python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 500000 --action-mask")
+                       "python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 "
+                       "--batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best")
         rooms = generate_map_set(8, 8, 0.15, 3, seed=UNSEEN_SEED)
         room_frames = []
         for i, room in enumerate(rooms):
