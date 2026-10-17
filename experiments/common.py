@@ -69,14 +69,18 @@ def make_env_factory(grid: str | np.ndarray, start: tuple[int, int] | None = Non
                              render_mode=render_mode)
 
 
-def _limit_threads() -> None:
-    """Mỗi tiến trình con dùng 1 luồng torch: mạng nhỏ, chạy nhiều tiến trình song song hiệu quả hơn."""
-    try:
-        import torch
+_SINGLE_THREAD_ENV = ("OMP_NUM_THREADS", "MKL_NUM_THREADS")
 
+
+def _limit_threads() -> None:
+    """Tiến trình con dùng 1 luồng torch: mạng nhỏ, chạy nhiều tiến trình song song hiệu quả hơn.
+
+    Chỉ chạm vào torch nếu tiến trình ĐÃ import torch (worker DQN). Không import torch ở đây:
+    worker Q-learning dạng bảng không cần torch, import vào tốn thêm ~1.3 GB bộ nhớ mỗi tiến trình.
+    """
+    torch = sys.modules.get("torch")
+    if torch is not None:
         torch.set_num_threads(1)
-    except ImportError:
-        pass
 
 
 def _call(fn: Callable[..., Any], kwargs: dict[str, Any]) -> Any:
@@ -89,13 +93,26 @@ def run_parallel(fn: Callable[..., Any], tasks: Iterable[dict[str, Any]], worker
     """Chạy fn(**task) cho từng task, tuần tự hoặc song song bằng nhiều tiến trình.
 
     fn phải là hàm cấp module (pickle được). Thứ tự kết quả giữ đúng thứ tự tasks.
+    Số tiến trình = min(workers, số task): mỗi tiến trình DQN dùng ~0.8 GB RAM (CPU) hoặc ~1.4 GB (GPU),
+    nên chọn workers theo RAM của máy.
     """
     task_list = list(tasks)
     if workers <= 1 or len(task_list) <= 1:
         return [fn(**t) for t in task_list]
-    with ProcessPoolExecutor(max_workers=min(workers, len(task_list))) as pool:
-        futures = [pool.submit(_call, fn, t) for t in task_list]
-        return [f.result() for f in futures]
+    # Tiến trình con kế thừa biến môi trường lúc tạo: đặt 1 luồng TRƯỚC khi chúng import torch/numpy,
+    # tránh mỗi tiến trình mở 12 luồng giành nhau CPU.
+    saved = {k: os.environ.get(k) for k in _SINGLE_THREAD_ENV}
+    os.environ.update({k: "1" for k in _SINGLE_THREAD_ENV})
+    try:
+        with ProcessPoolExecutor(max_workers=min(workers, len(task_list))) as pool:
+            futures = [pool.submit(_call, fn, t) for t in task_list]
+            return [f.result() for f in futures]
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def optimum_available(grid: np.ndarray) -> bool:
