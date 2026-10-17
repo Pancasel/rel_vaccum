@@ -9,3 +9,4 @@ results/**/*.zip
 results/**/*.mp4
 results/raw/
 .ipynb_checkpoints/
+results/**/*.pkl

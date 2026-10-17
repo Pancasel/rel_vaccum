@@ -5,13 +5,23 @@ from __future__ import annotations
 import argparse
 import functools
 import os
+import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from utils.paths import ROOT, assert_inside_root, setup_local_caches
 
+
+def configure_console() -> None:
+    """In được tiếng Việt trên console Windows (mặc định cp1252 sẽ báo UnicodeEncodeError)."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 setup_local_caches()
+configure_console()
 
 import numpy as np  # noqa: E402
 

@@ -1,0 +1,17 @@
+{
+  "config": {
+    "maps": [
+      "empty_3x3",
+      "obstacle_4x4",
+      "empty_4x4"
+    ],
+    "gamma": 0.99
+  },
+  "meta": {
+    "timestamp": "2026-10-17T10:36:36",
+    "git_commit": "eaa3706b7656cb90288f74ab21a2fda5112d3ac5",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cpu"
+  }
+}

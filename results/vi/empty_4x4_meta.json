@@ -1,0 +1,7 @@
+{
+  "map": "empty_4x4",
+  "n_states": 109248,
+  "n_iterations": 16,
+  "runtime_s": 6.796,
+  "gamma": 0.99
+}
