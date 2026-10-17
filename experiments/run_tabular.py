@@ -109,7 +109,7 @@ def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start:
         eval_df, "episode", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
                              ("steps_mean", "số bước (chính sách tham lam)")], "algo",
         out_fig / f"tabular_learning_curve_{name}{tag}.png",
-        f"Q-learning trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
+        f"{', '.join(args.algos)} trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
         hlines={"steps_mean": refs})]
     if start is not None and args.state_mode == "full":
         v_star = optimal_value(grid, start, RewardConfig.from_name(args.reward), args.gamma)
