@@ -128,6 +128,30 @@ def decode_obs(obs: np.ndarray) -> tuple[tuple[int, int], np.ndarray, np.ndarray
     return (int(pos[0]), int(pos[1])), cleaned, obstacles
 
 
+def egocentric_shape(height: int, width: int) -> tuple[int, int, int]:
+    """Shape của quan sát lấy robot làm tâm cho lưới H x W: (3, 2H-1, 2W-1)."""
+    return (3, 2 * height - 1, 2 * width - 1)
+
+
+def egocentric_view(obs: np.ndarray) -> np.ndarray:
+    """Dịch observation (3, H, W) sao cho robot luôn nằm ở tâm ảnh (3, 2H-1, 2W-1).
+
+    Vì sao: với quan sát gốc, mạng phải học lại cùng một quy tắc ("ô bẩn ngay bên trái thì đi
+    trái") cho từng vị trí trên bản đồ. Khi robot luôn ở tâm, quy tắc đó là một và dùng chung
+    cho mọi vị trí, mọi căn phòng — điều kiện để khái quát sang phòng chưa gặp.
+    Vùng ngoài bản đồ được đánh dấu là vật cản (kênh 2 = 1), nên robot "thấy" tường bao quanh.
+    Ảnh đủ lớn (2H-1) để từ tâm vẫn thấy toàn bộ căn phòng ở mọi vị trí, không mất thông tin.
+    Kênh 0 vẫn là one-hot vị trí robot (luôn ở tâm) để mọi hàm đọc observation dùng lại được.
+    """
+    _, height, width = obs.shape
+    (r, c), _, _ = decode_obs(obs)
+    view = np.zeros(egocentric_shape(height, width), dtype=np.float32)
+    view[2] = 1.0
+    top, left = height - 1 - r, width - 1 - c
+    view[:, top:top + height, left:left + width] = obs
+    return view
+
+
 def valid_actions_for(grid: np.ndarray, pos: tuple[int, int]) -> list[int]:
     """Các hành động không đụng tường/vật cản khi đứng ở pos."""
     return [a for a, (dr, dc) in enumerate(ACTION_DELTAS) if _in_free(grid, pos[0] + dr, pos[1] + dc)]

@@ -37,13 +37,19 @@ N_TEST_MAPS = 50
 FINAL_EVAL_EPISODES_RANDOM_START = 50
 
 
+def reward_config_of(spec: dict[str, Any]) -> RewardConfig:
+    """Cấu hình reward theo spec; "shaping_coef" (nếu có) ghi đè hệ số shaping thế năng."""
+    overrides = {"shaping_coef": spec["shaping_coef"]} if spec.get("shaping_coef") is not None else {}
+    return RewardConfig.from_name(spec["reward"], **overrides)
+
+
 def make_env(spec: dict[str, Any]) -> gymnasium.Env:
     """Tạo env từ một spec (dict pickle được, để dùng trong tiến trình con).
 
     spec: {"map": tên | None, "random": (H, W, D) | None, "pool": list | None, "exclude": list | None,
            "start": (r, c) | None, "reward": tên, "hide": bool}
     """
-    reward = RewardConfig.from_name(spec["reward"])
+    reward = reward_config_of(spec)
     if spec.get("random"):
         h, w, density = spec["random"]
         env: gymnasium.Env = RandomMapVacuumEnv(h, w, density, map_pool=spec.get("pool"),
@@ -64,8 +70,12 @@ def env_tag(spec: dict[str, Any]) -> str:
         tag += "_hide"
     if spec["reward"] != "dense":
         tag += f"_{spec['reward']}"
+    if spec.get("shaping_coef") is not None:
+        tag += f"_sc{spec['shaping_coef']:g}"
     if spec.get("action_mask"):
         tag += "_mask"
+    if spec.get("egocentric"):
+        tag += "_ego"
     return tag
 
 
@@ -73,8 +83,8 @@ def final_evaluation(agent: Any, spec: dict[str, Any], seed: int, test_maps: lis
     """Đánh giá cuối: trên tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên) hoặc trên bản đồ cố định."""
     wrap: Callable[[gymnasium.Env], gymnasium.Env] | None = HideCleanedChannel if spec.get("hide") else None
     if test_maps is not None:
-        return evaluate_on_maps(agent, test_maps, 1, seed=2000 + seed,
-                                reward_config=RewardConfig.from_name(spec["reward"]), wrap=wrap)
+        return evaluate_on_maps(agent, test_maps, 1, seed=2000 + seed, reward_config=reward_config_of(spec),
+                                wrap=wrap)
     n = 1 if spec.get("start") else FINAL_EVAL_EPISODES_RANDOM_START
     return evaluate(agent, functools.partial(make_env, spec), n, seed=2000 + seed)
 
@@ -140,6 +150,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-episodes", type=int, default=20)
     parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
     parser.add_argument("--action-mask", action="store_true", help="cải tiến v3: không chọn hướng đâm vào tường")
+    parser.add_argument("--egocentric", action="store_true", help="cải tiến v4: quan sát lấy robot làm tâm")
+    parser.add_argument("--shaping-coef", type=float, default=None,
+                        help="hệ số shaping thế năng (dùng với --reward shaped), mặc định 1.0")
+    parser.add_argument("--n-envs", type=int, default=1, help="số môi trường song song trong một tiến trình")
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--train-freq", type=int, default=4, help="cập nhật mạng mỗi N bước môi trường")
     parser.add_argument("--checkpoints", type=int, nargs="*", default=None,
                         help="các bước lưu mô hình (mặc định 0, 1/4 và toàn bộ số bước)")
     add_common_args(parser, "results/deep")
@@ -149,7 +165,8 @@ def build_parser() -> argparse.ArgumentParser:
 def build_spec(args: argparse.Namespace) -> tuple[dict[str, Any], list[np.ndarray] | None]:
     """Spec môi trường + tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên)."""
     spec: dict[str, Any] = {"reward": args.reward, "hide": args.hide_cleaned, "start": None,
-                            "action_mask": args.action_mask}
+                            "action_mask": args.action_mask, "egocentric": args.egocentric,
+                            "shaping_coef": args.shaping_coef}
     if args.random_maps:
         h, w, density = int(args.random_maps[0]), int(args.random_maps[1]), float(args.random_maps[2])
         n_test = 5 if args.quick else N_TEST_MAPS
@@ -179,7 +196,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                         eval_every_steps=eval_every, eval_episodes=2 if args.quick else args.eval_episodes,
                         log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)),
                         checkpoint_steps=tuple(checkpoints), device=args.device, action_mask=args.action_mask,
-                        seed=seed)
+                        egocentric=args.egocentric, n_envs=args.n_envs, batch_size=args.batch_size,
+                        train_freq=args.train_freq, seed=seed)
         tasks.append({"spec": spec, "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / f"seed{seed}"),
                       "test_maps": test_maps})
     results = run_parallel(train_one, tasks, workers=args.workers)

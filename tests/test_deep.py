@@ -187,3 +187,32 @@ def test_dqn_learns_3x3(tmp_path: Path) -> None:
     agent = DQNAgent((3, 3, 3), DQNConfig(total_timesteps=30_000, eval_every_steps=10_000, eval_episodes=1))
     agent.train(factory, tmp_path / "dqn3")
     assert run_episode(agent, factory(), seed=0)["coverage"] == 1.0
+
+
+def test_vectorized_egocentric_training(tmp_path: Path) -> None:
+    from env.vacuum_env import RandomMapVacuumEnv
+
+    cfg = DQNConfig(total_timesteps=640, learning_starts=64, n_envs=8, egocentric=True, action_mask=True,
+                    batch_size=32, buffer_size=2000, train_freq=8, eval_every_steps=320, eval_episodes=2,
+                    log_every_steps=160, checkpoint_steps=(0, 320))
+    agent = DQNAgent((3, 5, 5), cfg)
+    assert agent.net_shape == (3, 9, 9)
+    logs = agent.train(functools.partial(RandomMapVacuumEnv, 5, 5, 0.2), tmp_path / "vec")
+    assert list(logs["eval"]["global_step"]) == [320, 640]
+    assert (tmp_path / "vec" / "checkpoints" / "step320.pt").exists()
+    assert len(logs["losses"]) > 0
+    loaded = DQNAgent.load(tmp_path / "vec" / "model.pt", device="cpu")
+    assert loaded.cfg.egocentric and loaded.net_shape == (3, 9, 9)
+    result = run_episode(loaded, RandomMapVacuumEnv(5, 5, 0.2), seed=0)
+    assert result["collisions"] == 0  # có mask thì không bao giờ đâm tường
+
+
+def test_vectorized_update_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tỷ lệ cập nhật/bước môi trường giữ đúng 1/train_freq khi chạy nhiều môi trường."""
+    calls = []
+    agent = DQNAgent((3, 3, 3), DQNConfig(total_timesteps=400, learning_starts=80, n_envs=4, train_freq=4,
+                                          batch_size=8, buffer_size=500, eval_every_steps=400, eval_episodes=1))
+    original = agent._learn
+    monkeypatch.setattr(agent, "_learn", lambda buf: calls.append(1) or original(buf))
+    agent.train(functools.partial(VacuumEnv, "empty_3x3"), tmp_path / "count")
+    assert len(calls) == (400 - 80) // 4

@@ -41,16 +41,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--n-test-maps", type=int, default=None, help="mặc định 20 (E3), 50 (E4)")
     parser.add_argument("--timesteps", type=int, default=300_000)
     parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
+    parser.add_argument("--action-mask", action="store_true", help="cải tiến v3: không chọn hướng đâm vào tường")
+    parser.add_argument("--egocentric", action="store_true", help="cải tiến v4: quan sát lấy robot làm tâm")
+    parser.add_argument("--reward", default="dense", choices=["dense", "shaped"])
+    parser.add_argument("--shaping-coef", type=float, default=None)
+    parser.add_argument("--n-envs", type=int, default=1, help="số môi trường song song trong một tiến trình")
+    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--train-freq", type=int, default=4, help="cập nhật mạng mỗi N bước môi trường")
+    parser.add_argument("--tag", default="", help="hậu tố thư mục/hình để tách các cấu hình (ví dụ _v4)")
     add_common_args(parser, "results/generalization")
     parser.set_defaults(seeds=[0, 1, 2])
     return parser
 
 
-def dqn_cfg(timesteps: int, seed: int, quick: bool, device: str) -> dict[str, Any]:
+def dqn_cfg(timesteps: int, seed: int, quick: bool, device: str, args: argparse.Namespace) -> dict[str, Any]:
     """Cấu hình DQN chung cho E3/E4 (giống run_deep để kết quả so sánh được)."""
     cfg = DQNConfig(total_timesteps=timesteps, learning_starts=min(DQNConfig.learning_starts, timesteps // 5),
                     eval_every_steps=max(1, timesteps // 20), eval_episodes=2 if quick else 20,
-                    log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)), device=device, seed=seed)
+                    log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)), device=device,
+                    action_mask=args.action_mask, egocentric=args.egocentric, n_envs=args.n_envs,
+                    batch_size=args.batch_size, train_freq=args.train_freq, seed=seed)
     return cfg.__dict__.copy()
 
 
@@ -92,11 +102,11 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
             test_maps = generate_map_set(h, w, density, n_test, seed=1000 + int(round(100 * density)))
             exclude = test_maps
         test_sets[density] = test_maps
-        spec = {"map": None, "random": (h, w, density), "pool": None, "exclude": exclude, "reward": "dense",
-                "hide": False, "start": None}
+        spec = {"map": None, "random": (h, w, density), "pool": None, "exclude": exclude, "reward": args.reward,
+                "shaping_coef": args.shaping_coef, "hide": False, "start": None}
         for seed in seeds:
-            log_dir = out / "density" / f"{h}x{w}_d{density:g}" / f"seed{seed}"
-            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device), "log_dir": str(log_dir),
+            log_dir = out / "density" / f"{h}x{w}_d{density:g}{args.tag}" / f"seed{seed}"
+            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device, args), "log_dir": str(log_dir),
                           "test_maps": test_maps})
             meta.append((density, seed, log_dir))
     run_parallel(train_one, tasks, workers=args.workers)
@@ -108,10 +118,10 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
     plot_lines_with_error(table, "density",
                           [("coverage_mean", "coverage_mean_sd", "tỷ lệ đã dọn"),
                            ("steps_to_full_mean", "steps_to_full_mean_sd", "số bước (episode dọn xong)")],
-                          "agent", out / "figures" / f"e3_density_{h}x{w}.png",
+                          "agent", out / "figures" / f"e3_density_{h}x{w}{args.tag}.png",
                           f"E3: DQN và baseline trên phòng {h}x{w} khi tăng mật độ vật cản "
                           f"(trung bình ± std qua {len(seeds)} seed)", "mật độ vật cản")
-    save_csv(table, out / "density" / f"e3_density_{h}x{w}.csv")
+    save_csv(table, out / "density" / f"e3_density_{h}x{w}{args.tag}.csv")
     return table
 
 
@@ -125,11 +135,11 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
     tasks, meta = [], []
     for k in k_values:
         pool = generate_map_set(h, w, density, k, seed=TRAIN_POOL_SEED, exclude=test_maps) if k > 0 else None
-        spec = {"map": None, "random": (h, w, density), "pool": pool, "exclude": test_maps, "reward": "dense",
-                "hide": False, "start": None}
+        spec = {"map": None, "random": (h, w, density), "pool": pool, "exclude": test_maps, "reward": args.reward,
+                "shaping_coef": args.shaping_coef, "hide": False, "start": None}
         for seed in seeds:
-            log_dir = out / "generalization" / f"{h}x{w}_d{density:g}_K{k}" / f"seed{seed}"
-            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device), "log_dir": str(log_dir),
+            log_dir = out / "generalization" / f"{h}x{w}_d{density:g}_K{k}{args.tag}" / f"seed{seed}"
+            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device, args), "log_dir": str(log_dir),
                           "test_maps": test_maps})
             meta.append((k, seed, log_dir, pool))
     run_parallel(train_one, tasks, workers=args.workers)
@@ -143,10 +153,10 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
             df = evaluate_on_maps(agent, maps, EPISODES_PER_TEST_MAP, seed=seed)
             rows.append({"K": "∞" if k == 0 else str(k), "split": split, "seed": seed, **summarize(df).iloc[0].to_dict()})
     table = across_seeds(pd.DataFrame(rows), ["K", "split"])
-    plot_bar_with_error(table, "K", "coverage_mean", "coverage_mean_sd", out / "figures" / f"e4_generalization_{h}x{w}.png",
+    plot_bar_with_error(table, "K", "coverage_mean", "coverage_mean_sd", out / "figures" / f"e4_generalization_{h}x{w}{args.tag}.png",
                         f"E4: DQN huấn luyện trên K phòng, đo trên phòng đã gặp và chưa gặp ({h}x{w}, mật độ {density:g})",
                         "tỷ lệ đã dọn", hue="split")
-    save_csv(table, out / "generalization" / f"e4_generalization_{h}x{w}.csv")
+    save_csv(table, out / "generalization" / f"e4_generalization_{h}x{w}{args.tag}.csv")
     return table
 
 
@@ -159,8 +169,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
         args.densities = args.densities[:2]
     table = (run_density if args.exp == "density" else run_generalization)(args, out, seeds, timesteps)
     text = df_to_markdown_table(table)
-    write_text(text, out / args.exp / "summary.md")
-    save_config_json({"args": vars(args), "seeds": seeds, "timesteps": timesteps}, out / args.exp / "config.json")
+    write_text(text, out / args.exp / f"summary{args.tag}.md")
+    save_config_json({"args": vars(args), "seeds": seeds, "timesteps": timesteps}, out / args.exp / f"config{args.tag}.json")
     print(text)
     return table
 

@@ -97,3 +97,21 @@ def test_encoder_validation() -> None:
     assert encoder.full_mask == 2**9 - 1
     with pytest.raises(ValueError):
         encoder.decode_mask(2**9)
+
+
+def test_egocentric_view_centers_robot_and_keeps_map() -> None:
+    from env.grid_utils import egocentric_shape, egocentric_view
+
+    env = VacuumEnv("obstacle_4x4")
+    rng = np.random.default_rng(0)
+    for seed in range(20):
+        obs, _ = env.reset(seed=seed)
+        for _ in range(5):
+            view = egocentric_view(obs)
+            assert view.shape == egocentric_shape(4, 4) == (3, 7, 7)
+            assert view[0, 3, 3] == 1 and view[0].sum() == 1          # robot luôn ở tâm
+            assert view[1].sum() == obs[1].sum()                        # không mất ô đã dọn nào
+            assert view[2].sum() == obs[2].sum() + (49 - 16)            # ngoài bản đồ = tường
+            assert decode_obs(view)[0] == (3, 3)
+            assert valid_actions(view) == valid_actions(obs)            # hành động hợp lệ giữ nguyên
+            obs, *_ = env.step(int(rng.integers(4)))

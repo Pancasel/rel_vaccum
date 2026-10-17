@@ -29,6 +29,7 @@ import torch
 from torch import nn
 
 from deep.networks import QNetwork, count_parameters
+from env.grid_utils import egocentric_shape, egocentric_view
 from deep.replay_buffer import ReplayBuffer
 from experiments.evaluate import evaluate, summarize
 from utils.io import save_csv
@@ -68,6 +69,11 @@ class DQNConfig:
     # lấy max trong mục tiêu. Va chạm không bao giờ có ích (chỉ bị phạt và đứng yên), nên che chúng đi
     # không làm mất chính sách tối ưu mà loại được vòng lặp "đâm tường mãi" của chính sách tất định.
     action_mask: bool = False
+    # Cải tiến v4: quan sát lấy robot làm tâm (xem env.grid_utils.egocentric_view) để khái quát sang phòng lạ.
+    egocentric: bool = False
+    # Số môi trường chạy song song trong một tiến trình: chọn hành động theo lô (nhanh hơn nhiều trên GPU).
+    # Tỷ lệ "số lần cập nhật mạng / số bước môi trường" giữ nguyên 1/train_freq nên thuật toán không đổi.
+    n_envs: int = 1
     seed: int = 0
 
     def __post_init__(self) -> None:
@@ -84,6 +90,8 @@ class DQNConfig:
             raise ValueError("Các chu kỳ (train_freq, target_update_interval, eval/log) phải >= 1.")
         if not 0.0 < self.epsilon_decay_fraction <= 1.0:
             raise ValueError("epsilon_decay_fraction phải trong (0, 1].")
+        if self.n_envs < 1:
+            raise ValueError("n_envs phải >= 1.")
         self.checkpoint_steps = tuple(int(s) for s in self.checkpoint_steps)
 
 
@@ -142,21 +150,27 @@ class DQNAgent:
     def __init__(self, obs_shape: tuple[int, int, int], cfg: DQNConfig) -> None:
         if len(obs_shape) != 3 or obs_shape[0] != 3:
             raise ValueError(f"obs_shape phải là (3, H, W), nhận được {obs_shape}.")
-        self.obs_shape = tuple(int(v) for v in obs_shape)
+        self.obs_shape = tuple(int(v) for v in obs_shape)  # observation gốc của môi trường
         self.cfg = cfg
+        # Shape mạng thực sự nhận (khác obs_shape khi dùng quan sát lấy robot làm tâm).
+        self.net_shape = egocentric_shape(*self.obs_shape[1:]) if cfg.egocentric else self.obs_shape
         self.device = resolve_device(cfg.device)
         set_global_seed(cfg.seed)  # khởi tạo trọng số tái lập được
-        self.online = QNetwork(self.obs_shape[1], self.obs_shape[2]).to(self.device)
+        self.online = QNetwork(self.net_shape[1], self.net_shape[2]).to(self.device)
         self.target = copy.deepcopy(self.online)
         self.target.requires_grad_(False)
         self.optimizer = torch.optim.Adam(self.online.parameters(), lr=cfg.learning_rate)
         self.rng = np.random.default_rng(cfg.seed)
 
     # ------------------------------------------------------------------ chọn hành động
+    def preprocess(self, obs: np.ndarray) -> np.ndarray:
+        """Observation gốc -> đầu vào của mạng (dịch về tâm robot nếu bật egocentric)."""
+        return egocentric_view(obs) if self.cfg.egocentric else obs
+
     def q_values(self, obs: np.ndarray) -> np.ndarray:
-        """Q(s, ·) của một observation theo mạng online."""
+        """Q(s, ·) của một observation gốc theo mạng online."""
         with torch.no_grad():
-            x = torch.as_tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
+            x = torch.as_tensor(self.preprocess(obs), dtype=torch.float32, device=self.device).unsqueeze(0)
             return self.online(x)[0].cpu().numpy()
 
     def _valid_actions(self, obs: np.ndarray) -> np.ndarray:
@@ -182,8 +196,12 @@ class DQNAgent:
         return int(valid[np.argmax(q[valid])])
 
     # ------------------------------------------------------------------ một bước học
-    def _learn(self, buffer: ReplayBuffer) -> dict[str, float]:
-        """Lấy một lô từ buffer và làm một bước gradient (tương ứng dòng cập nhật Q của 6.5)."""
+    def _learn(self, buffer: ReplayBuffer) -> dict[str, torch.Tensor]:
+        """Lấy một lô từ buffer và làm một bước gradient (tương ứng dòng cập nhật Q của 6.5).
+
+        Trả các số đo dạng tensor (chưa đọc về CPU): mỗi lần đọc `.item()` bắt CPU chờ GPU tính xong,
+        nên chỉ đọc khi ghi log (xem `_mean_metrics`), không đọc ở mỗi bước cập nhật.
+        """
         cfg = self.cfg
         raw = buffer.sample(cfg.batch_size)
         batch = {k: torch.as_tensor(v, device=self.device) for k, v in raw.items()}
@@ -197,8 +215,13 @@ class DQNAgent:
         loss.backward()
         grad_norm = nn.utils.clip_grad_norm_(self.online.parameters(), cfg.max_grad_norm)
         self.optimizer.step()
-        return {"loss": float(loss.item()), "mean_q": float(q_sa.mean().item()),
-                "mean_target": float(y.mean().item()), "grad_norm": float(grad_norm)}
+        return {"loss": loss.detach(), "mean_q": q_sa.detach().mean(), "mean_target": y.mean(),
+                "grad_norm": grad_norm.detach()}
+
+    @staticmethod
+    def _mean_metrics(pending: list[dict[str, torch.Tensor]]) -> dict[str, float]:
+        """Trung bình các số đo của nhiều lần cập nhật (một lần đồng bộ GPU duy nhất)."""
+        return {k: float(torch.stack([m[k] for m in pending]).mean().item()) for k in pending[0]}
 
     # ------------------------------------------------------------------ vòng huấn luyện
     def train(self, env_factory: Callable[[], gymnasium.Env], log_dir: str | os.PathLike,
@@ -221,11 +244,13 @@ class DQNAgent:
         env = env_factory()
         if env.observation_space.shape != self.obs_shape:
             raise ValueError(f"Env có observation {env.observation_space.shape}, agent cần {self.obs_shape}.")
-        buffer = ReplayBuffer(cfg.buffer_size, self.obs_shape, seed=cfg.seed)
+        if cfg.n_envs > 1:
+            return self._train_vectorized(env_factory, log_path, eval_factory)
+        buffer = ReplayBuffer(cfg.buffer_size, self.net_shape, seed=cfg.seed)
         episode_rows: list[dict[str, Any]] = []
         loss_rows: list[dict[str, Any]] = []
         eval_rows: list[dict[str, Any]] = []
-        pending: list[dict[str, float]] = []
+        pending: list[dict[str, torch.Tensor]] = []
         if 0 in cfg.checkpoint_steps:
             self.save(log_path / "checkpoints" / "step0.pt")
 
@@ -238,7 +263,8 @@ class DQNAgent:
             action = self.random_action(obs) if explore else self.act(obs, epsilon=epsilon)
             # "Take action A, observe R, S'"
             next_obs, reward, terminated, truncated, info = env.step(action)
-            buffer.add(obs, action, reward, next_obs, terminated)  # chỉ lưu terminated (C2.11)
+            # Chỉ lưu terminated, không lưu truncated (C2.11); lưu đúng dạng đầu vào của mạng.
+            buffer.add(self.preprocess(obs), action, reward, self.preprocess(next_obs), terminated)
             ep_return += reward
             obs = next_obs
             if terminated or truncated:
@@ -254,7 +280,7 @@ class DQNAgent:
                 # Cập nhật target network: chép cứng trọng số online (Mnih 2015).
                 self.target.load_state_dict(self.online.state_dict())
             if t % cfg.log_every_steps == 0 and pending:
-                loss_rows.append({"global_step": t, **pd.DataFrame(pending).mean().to_dict(),
+                loss_rows.append({"global_step": t, **self._mean_metrics(pending),
                                   "wall_time_s": time.monotonic() - t0})
                 pending = []
             if t % cfg.eval_every_steps == 0 or t == cfg.total_timesteps:
@@ -264,6 +290,11 @@ class DQNAgent:
             if t in cfg.checkpoint_steps:
                 self.save(log_path / "checkpoints" / f"step{t}.pt")
 
+        return self._finish(log_path, episode_rows, loss_rows, eval_rows)
+
+    def _finish(self, log_path: Path, episode_rows: list[dict[str, Any]], loss_rows: list[dict[str, Any]],
+                eval_rows: list[dict[str, Any]]) -> dict[str, pd.DataFrame]:
+        """Ghi các CSV log và mô hình cuối."""
         logs = {"episodes": pd.DataFrame(episode_rows), "losses": pd.DataFrame(loss_rows),
                 "eval": pd.DataFrame(eval_rows)}
         save_csv(logs["episodes"], log_path / "train_episodes.csv")
@@ -271,6 +302,82 @@ class DQNAgent:
         save_csv(logs["eval"], log_path / "eval.csv")
         self.save(log_path / "model.pt")
         return logs
+
+    def _greedy_batch(self, net_obs: np.ndarray) -> np.ndarray:
+        """Hành động tham lam cho một lô đầu vào mạng (B, 3, H', W'), có che hành động nếu bật mask."""
+        x = torch.as_tensor(net_obs, dtype=torch.float32)
+        with torch.no_grad():
+            q = self.online(x.to(self.device))
+            if self.cfg.action_mask:
+                q = q.masked_fill(~valid_action_mask(x).to(self.device), MASKED_Q)
+        return q.argmax(dim=1).cpu().numpy()
+
+    def _train_vectorized(self, env_factory: Callable[[], gymnasium.Env], log_path: Path,
+                          eval_factory: Callable[[], gymnasium.Env]) -> dict[str, pd.DataFrame]:
+        """Cùng thuật toán, nhưng chạy n_envs môi trường song song và chọn hành động theo lô.
+
+        Mỗi vòng lặp đi một bước ở cả n_envs môi trường (n_envs transition vào buffer). Số lần cập
+        nhật mạng, chép target network, đánh giá và checkpoint được tính theo TỔNG số bước môi trường
+        vượt qua các mốc, nên tỷ lệ cập nhật/bước và lịch ε giữ nguyên như bản một môi trường.
+        """
+        cfg = self.cfg
+        n = cfg.n_envs
+        envs = [env_factory() for _ in range(n)]
+        for env in envs:
+            if env.observation_space.shape != self.obs_shape:
+                raise ValueError(f"Env có observation {env.observation_space.shape}, agent cần {self.obs_shape}.")
+        buffer = ReplayBuffer(cfg.buffer_size, self.net_shape, seed=cfg.seed)
+        episode_rows: list[dict[str, Any]] = []
+        loss_rows: list[dict[str, Any]] = []
+        eval_rows: list[dict[str, Any]] = []
+        pending: list[dict[str, torch.Tensor]] = []
+        if 0 in cfg.checkpoint_steps:
+            self.save(log_path / "checkpoints" / "step0.pt")
+        obs = [env.reset(seed=cfg.seed * 1000 + i)[0] for i, env in enumerate(envs)]
+        net_obs = np.stack([self.preprocess(o) for o in obs])
+        returns = np.zeros(n)
+        episode, t, t0 = 0, 0, time.monotonic()
+
+        def crossed(prev: int, now: int, every: int) -> bool:
+            return now // every > prev // every
+
+        while t < cfg.total_timesteps:
+            prev, t = t, t + n
+            epsilon = linear_epsilon(prev, cfg)
+            greedy = self._greedy_batch(net_obs) if prev >= cfg.learning_starts else None
+            for i, env in enumerate(envs):
+                explore = greedy is None or self.rng.random() < epsilon
+                action = self.random_action(obs[i]) if explore else int(greedy[i])
+                next_obs, reward, terminated, truncated, info = env.step(action)
+                next_net = self.preprocess(next_obs)
+                buffer.add(net_obs[i], action, reward, next_net, terminated)  # chỉ lưu terminated (C2.11)
+                returns[i] += reward
+                if terminated or truncated:
+                    episode += 1
+                    episode_rows.append({"global_step": t, "episode": episode, "return_undiscounted": returns[i],
+                                         "coverage": info["coverage"], "steps": info["steps"],
+                                         "terminated": terminated, "truncated": truncated, "epsilon": epsilon})
+                    returns[i] = 0.0
+                    next_obs, _ = env.reset()
+                    next_net = self.preprocess(next_obs)
+                obs[i], net_obs[i] = next_obs, next_net
+            low = max(prev, cfg.learning_starts)
+            for _ in range(max(0, t // cfg.train_freq - low // cfg.train_freq)):
+                pending.append(self._learn(buffer))
+            if crossed(prev, t, cfg.target_update_interval):
+                self.target.load_state_dict(self.online.state_dict())
+            if crossed(prev, t, cfg.log_every_steps) and pending:
+                loss_rows.append({"global_step": t, **self._mean_metrics(pending),
+                                  "wall_time_s": time.monotonic() - t0})
+                pending = []
+            if crossed(prev, t, cfg.eval_every_steps) or t >= cfg.total_timesteps:
+                summary = summarize(evaluate(self, eval_factory, cfg.eval_episodes, seed=EVAL_SEED_OFFSET + cfg.seed,
+                                             gamma=cfg.gamma))
+                eval_rows.append({"global_step": t, "episodes_done": episode, **summary.iloc[0].to_dict()})
+            for step in cfg.checkpoint_steps:
+                if prev < step <= t:
+                    self.save(log_path / "checkpoints" / f"step{step}.pt")
+        return self._finish(log_path, episode_rows, loss_rows, eval_rows)
 
     # ------------------------------------------------------------------ lưu / đọc
     def save(self, path: str | os.PathLike) -> Path:
