@@ -18,6 +18,10 @@ from utils.paths import ROOT  # noqa: E402
 
 configure_console()
 
+# Tham số tốc độ của v4 (16 môi trường song song, lô 256 mỗi 16 bước) và cấu hình v4 đầy đủ.
+V4_SPEED = ["--n-envs", "16", "--batch-size", "256", "--train-freq", "16"]
+V4 = [*V4_SPEED, "--action-mask", "--egocentric", "--keep-best"]
+
 # (tên bước, module, tham số chạy thật, có nhận --workers không)
 STEPS: list[tuple[str, str, list[str], bool]] = [
     ("baselines", "experiments.run_baselines", [], False),
@@ -44,6 +48,23 @@ STEPS: list[tuple[str, str, list[str], bool]] = [
     ("e3_density", "experiments.run_generalization", ["--exp", "density", "--timesteps", "300000"], True),
     ("e4_generalization", "experiments.run_generalization", ["--exp", "generalization", "--timesteps", "200000"], True),
     ("e6_optimality", "experiments.run_optimality", [], True),
+    # Cải tiến v4: A/B bốn cấu hình trên phòng ngẫu nhiên 8x8, rồi bản chính và E3/E4 với cấu hình được chọn.
+    *[(f"v4_ab_{name}", "experiments.run_deep",
+       ["--random-maps", "8", "8", "0.15", "--timesteps", "600000", "--seeds", "0", "1", *V4_SPEED, "--action-mask",
+        *extra, "--out", "results/v4_ab"], True)
+      for name, extra in (("mask", []), ("mask_ego", ["--egocentric"]),
+                          ("mask_shaped", ["--reward", "shaped", "--shaping-coef", "2"]),
+                          ("mask_ego_shaped", ["--egocentric", "--reward", "shaped", "--shaping-coef", "2"]))],
+    ("deep_random_8x8_v4", "experiments.run_deep",
+     ["--random-maps", "8", "8", "0.15", "--timesteps", "2000000", *V4, "--eval-every", "50000",
+      "--eval-episodes", "50", "--checkpoints", "0", "100000", "500000", "2000000"], True),
+    ("deep_random_8x8_v4_long", "experiments.run_deep",
+     ["--random-maps", "8", "8", "0.15", "--timesteps", "4000000", *V4, "--eval-every", "100000",
+      "--eval-episodes", "50", "--checkpoints", "0", "100000", "500000", "4000000", "--out", "results/deep_long"], True),
+    ("e3_density_v4", "experiments.run_generalization",
+     ["--exp", "density", "--size", "8", "8", "--timesteps", "2000000", "--seeds", "0", "1", "2", *V4], True),
+    ("e4_generalization_v4", "experiments.run_generalization",
+     ["--exp", "generalization", "--timesteps", "2000000", "--seeds", "0", "1", "2", *V4], True),
     ("demo", "experiments.make_demo", [], False),
 ]
 
