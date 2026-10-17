@@ -150,6 +150,19 @@ def compose_side_by_side(frames: list[np.ndarray], gap_px: int = 8) -> np.ndarra
     return np.concatenate(parts, axis=1)
 
 
+def compose_vertical(frames: list[np.ndarray], gap_px: int = 8) -> np.ndarray:
+    """Xếp các ảnh theo chiều dọc (ảnh hẹp hơn được đệm trắng bên phải)."""
+    if not frames:
+        raise ValueError("Cần ít nhất một ảnh để ghép.")
+    width = max(f.shape[1] for f in frames)
+    parts: list[np.ndarray] = []
+    for i, frame in enumerate(frames):
+        if i > 0:
+            parts.append(np.full((gap_px, width, 3), 255, dtype=np.uint8))
+        parts.append(pad_to_size(frame, frame.shape[0], width))
+    return np.concatenate(parts, axis=0)
+
+
 def save_gif(frames: list[np.ndarray], path: str | os.PathLike, fps: int = 4,
              last_frame_hold: int = 3) -> Path:
     """Ghi danh sách khung hình thành GIF lặp vô hạn (khung cuối giữ lâu hơn cho dễ nhìn).

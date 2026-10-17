@@ -1,0 +1,46 @@
+{
+  "config": {
+    "args": {
+      "time_budget_min": 15.0,
+      "count_time_limit_s": 600.0,
+      "skip_scaling": false,
+      "seed": 0,
+      "out": "results",
+      "quick": false,
+      "workers": 4
+    },
+    "count_sizes": [
+      [
+        2,
+        2
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        3
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        4,
+        4
+      ],
+      [
+        4,
+        5
+      ]
+    ]
+  },
+  "meta": {
+    "timestamp": "2026-10-17T10:58:30",
+    "git_commit": "387064c26d6577c991f1eb317e56d6f94d07f2ac",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cpu"
+  }
+}

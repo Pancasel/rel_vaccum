@@ -115,8 +115,13 @@ def evaluate(agent: Any, env_factory: Callable[[], gymnasium.Env], n_episodes: i
 
 def evaluate_on_maps(agent: Any, maps: list[np.ndarray], episodes_per_map: int, seed: int,
                      reward_config: RewardConfig | None = None, max_steps_factor: int = 4,
-                     gamma: float = 0.99) -> pd.DataFrame:
+                     gamma: float = 0.99,
+                     wrap: Callable[[gymnasium.Env], gymnasium.Env] | None = None) -> pd.DataFrame:
     """Đánh giá trên một danh sách bản đồ cố định (tập test của E3/E4), start ngẫu nhiên.
+
+    Args:
+        wrap: wrapper áp lên env trước khi đánh giá (ví dụ HideCleanedChannel cho E1 bản deep),
+            để agent nhận đúng loại observation nó được huấn luyện.
 
     Returns:
         DataFrame như evaluate(), thêm cột "map_id".
@@ -126,7 +131,9 @@ def evaluate_on_maps(agent: Any, maps: list[np.ndarray], episodes_per_map: int, 
     rows = []
     for map_id, grid in enumerate(maps):
         n_free = int((grid == 0).sum())
-        env = VacuumEnv(grid, reward_config=reward_config, max_steps=max_steps_factor * n_free)
+        env: gymnasium.Env = VacuumEnv(grid, reward_config=reward_config, max_steps=max_steps_factor * n_free)
+        if wrap is not None:
+            env = wrap(env)
         for i in range(episodes_per_map):
             row = run_episode(agent, env, seed=seed * SEED_STRIDE + map_id * episodes_per_map + i, gamma=gamma)
             row["episode"] = i

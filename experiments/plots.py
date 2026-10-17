@@ -147,18 +147,23 @@ def plot_bar_with_error(summary: pd.DataFrame, category: str, value: str, error:
     return _save(fig, out_path)
 
 
-def plot_lines_with_error(summary: pd.DataFrame, x: str, y: str, error: str, hue: str,
-                          out_path: str | os.PathLike, title: str, xlabel: str, ylabel: str) -> Path:
-    """Đường có thanh sai số theo một biến số (ví dụ số bước theo mật độ vật cản, E3)."""
-    fig, ax = plt.subplots(figsize=FIG_SIZE)
-    for i, (name, group) in enumerate(summary.groupby(hue, sort=False)):
-        group = group.sort_values(x)
-        ax.errorbar(group[x], group[y], yerr=group[error], marker="o", capsize=4, color=color_for(str(name), i),
-                    label=str(name))
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend(fontsize=9)
+def plot_lines_with_error(summary: pd.DataFrame, x: str, panels: list[tuple[str, str, str]], hue: str,
+                          out_path: str | os.PathLike, title: str, xlabel: str) -> Path:
+    """Đường có thanh sai số theo một biến số (ví dụ theo mật độ vật cản, E3).
+
+    Args:
+        panels: danh sách (cột giá trị, cột sai số, nhãn trục y), mỗi phần tử một panel.
+    """
+    fig, axes = plt.subplots(1, len(panels), figsize=(FIG_SIZE[0] * 0.65 * len(panels), FIG_SIZE[1]), squeeze=False)
+    for ax, (y, error, ylabel) in zip(axes[0], panels):
+        for i, (name, group) in enumerate(summary.groupby(hue, sort=False)):
+            group = group.sort_values(x)
+            ax.errorbar(group[x], group[y], yerr=group[error], marker="o", capsize=4,
+                        color=color_for(str(name), i), label=str(name))
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend(fontsize=9)
+    fig.suptitle(title)
     return _save(fig, out_path)
 
 
@@ -181,6 +186,27 @@ def plot_state_explosion(df: pd.DataFrame, out_path: str | os.PathLike, memory_l
     ax.set_ylabel("số trạng thái (thang log)")
     ax.set_title("Bùng nổ không gian trạng thái của Q-learning dạng bảng")
     ax.legend(fontsize=9)
+    return _save(fig, out_path)
+
+
+def plot_tabular_scaling(train_df: pd.DataFrame, eval_df: pd.DataFrame, out_path: str | os.PathLike) -> Path:
+    """T5.3: số trạng thái bảng Q đã gặp (thang log) và coverage tham lam theo thời gian, mỗi lưới một đường."""
+    fig, axes = plt.subplots(1, 2, figsize=(FIG_SIZE[0] * 1.3, FIG_SIZE[1]))
+    for i, (name, group) in enumerate(train_df.groupby("map", sort=False)):
+        axes[0].plot(group["wall_time_s"] / 60, group["n_states_visited"], color=color_for(str(name), i), label=name)
+    for i, (name, group) in enumerate(eval_df.groupby("map", sort=False)):
+        minutes = np.interp(group["episode"], train_df.loc[train_df["map"] == name, "episode"],
+                            train_df.loc[train_df["map"] == name, "wall_time_s"]) / 60
+        axes[1].plot(minutes, group["coverage_mean"], color=color_for(str(name), i), label=name)
+    axes[0].set_yscale("log")
+    axes[0].set_xlabel("thời gian huấn luyện (phút)")
+    axes[0].set_ylabel("số trạng thái trong bảng Q (log)")
+    axes[1].set_xlabel("thời gian huấn luyện (phút)")
+    axes[1].set_ylabel("tỷ lệ đã dọn (chính sách tham lam)")
+    axes[1].set_ylim(0, 1.05)
+    for ax in axes:
+        ax.legend(fontsize=9)
+    fig.suptitle("Q-learning dạng bảng khi lưới lớn dần: bảng phình to, chính sách không kịp học")
     return _save(fig, out_path)
 
 

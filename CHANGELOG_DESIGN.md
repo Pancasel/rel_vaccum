@@ -22,3 +22,22 @@ Nhật ký thay đổi thiết kế so với `PLAN_rel.md` / `IMPLEMENTATION_PLA
 - Reason: E3/E4 yêu cầu bản đồ train và test tách rời; Q-learning cần biết start có cố định không để ghi `q_start_max`.
 - Evidence/result: test `test_generate_map_set_distinct_and_exclude`, `test_random_map_env_exclude`.
 - Proposed B8 row: không cần (chi tiết cài đặt).
+
+## 2026-10-17 — T6.2: siêu tham số DQN và kích thước mạng
+
+- Change: DQNConfig mặc định learning_rate 5e-4 -> 2.5e-4, target_update_interval 1000 -> 500, buffer_size 50k -> 100k. QNetwork mặc định (32, 64) kênh / ẩn 256 -> (16, 32) kênh / ẩn 128.
+- Reason: thử 4 cấu hình trên obstacle_4x4 (xuất phát ngẫu nhiên, 150k bước): cấu hình ban đầu đạt tối ưu nhưng sụp ở 30k–40k bước (coverage 0.72); cấu hình mới ổn định từ 20k bước. Mạng nhỏ hơn cập nhật nhanh gấp 3.2 lần trên CPU (8.8 ms so với 28.3 ms mỗi lô 64 trên lưới 8x8) mà vẫn có 268k tham số.
+- Evidence/result: results/tuning/dqn_obstacle_4x4_config_{A,B,D}.log (A = cũ, D = chọn). Cấu hình D: 12.67 bước trung bình, tối ưu trung bình 12.69.
+- Proposed B8 row: | v2 | 2026-10-17 | DQN: lr 2.5e-4, target 500, buffer 100k, mạng nhỏ hơn | Cấu hình cũ sụp giữa chừng; huấn luyện CPU chậm | DQN 4x4 đạt gần tối ưu (12.67 vs 12.69 bước), ổn định |
+
+## 2026-10-17 — T4.4/T7: bổ sung script và helper
+
+- Change: thêm `experiments/common.py` (tham số CLI chung, chạy song song, tham chiếu tối ưu/baseline), `experiments/run_optimality.py` (E6 có script riêng), `env/render.py::compose_vertical`, tham số `wrap` cho `evaluate_on_maps`; checkpoint Q-learning lưu theo thư mục seed (`<algo>/seed<N>/checkpoints/`) để các seed không ghi đè nhau.
+- Reason: tránh lặp code giữa các script; E6 cần huấn luyện riêng cho từng ô xuất phát.
+- Proposed B8 row: không cần (chi tiết cài đặt).
+
+## 2026-10-17 — T5.3: kết quả khác giả thuyết
+
+- Change: không đổi code; ghi nhận kết quả.
+- Reason/Evidence: với xuất phát cố định trên phòng TRỐNG, Q-learning dạng bảng vẫn học tới 6x6 trong 15 phút (35 bước = tối ưu), nhưng bảng Q phình tới ~1.95 triệu trạng thái (~746 MB) và chỉ dùng được cho đúng một phòng + một điểm xuất phát. Giới hạn thật của tabular là bộ nhớ và không khái quát được, không phải "không học được" trên phòng nhỏ. (results/tabular/scaling.csv)
+- Proposed B8 row: | — | 2026-10-17 | Ghi nhận: tabular học được 6x6 trống khi start cố định | Kết quả thực nghiệm | Giới hạn là bộ nhớ + không khái quát, lý do cần DQN |
