@@ -26,7 +26,6 @@ from baselines import GreedyBFSAgent, ZigzagAgent  # noqa: E402
 from deep.dqn import DQNAgent, DQNConfig  # noqa: E402
 from env.maps import FIXED_MAPS, generate_map_set, get_map  # noqa: E402
 from env.vacuum_env import RandomMapVacuumEnv, RewardConfig, VacuumEnv  # noqa: E402
-from env.wrappers import HideCleanedChannel  # noqa: E402
 from experiments.evaluate import evaluate, evaluate_on_maps, summarize  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_learning_curves  # noqa: E402
 from utils.io import save_config_json, save_csv  # noqa: E402
@@ -47,7 +46,7 @@ def make_env(spec: dict[str, Any]) -> gymnasium.Env:
     """Tạo env từ một spec (dict pickle được, để dùng trong tiến trình con).
 
     spec: {"map": tên | None, "random": (H, W, D) | None, "pool": list | None, "exclude": list | None,
-           "start": (r, c) | None, "reward": tên, "hide": bool}
+           "start": (r, c) | None, "reward": tên}
     """
     reward = reward_config_of(spec)
     if spec.get("random"):
@@ -56,7 +55,7 @@ def make_env(spec: dict[str, Any]) -> gymnasium.Env:
                                                 exclude_maps=spec.get("exclude"), reward_config=reward)
     else:
         env = VacuumEnv(spec["map"], reward_config=reward, start=spec.get("start"))
-    return HideCleanedChannel(env) if spec.get("hide") else env
+    return env
 
 
 # Cờ dòng lệnh -> (trường DQNConfig, hậu tố tên thư mục), chỉ thêm vào tên khi khác mặc định.
@@ -78,8 +77,6 @@ def env_tag(spec: dict[str, Any]) -> str:
 def variant_tag(options: dict[str, Any]) -> str:
     """Hậu tố cho các tùy chọn môi trường/cải tiến (ẩn kênh, reward, shaping, mask, egocentric)."""
     tag = ""
-    if options.get("hide"):
-        tag += "_hide"
     if options["reward"] != "dense":
         tag += f"_{options['reward']}"
     if options.get("shaping_coef") is not None:
@@ -109,10 +106,8 @@ def check_reward_args(parser: argparse.ArgumentParser, args: argparse.Namespace)
 
 def final_evaluation(agent: Any, spec: dict[str, Any], seed: int, test_maps: list[np.ndarray] | None) -> pd.DataFrame:
     """Đánh giá cuối: trên tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên) hoặc trên bản đồ cố định."""
-    wrap: Callable[[gymnasium.Env], gymnasium.Env] | None = HideCleanedChannel if spec.get("hide") else None
     if test_maps is not None:
-        return evaluate_on_maps(agent, test_maps, 1, seed=2000 + seed, reward_config=reward_config_of(spec),
-                                wrap=wrap)
+        return evaluate_on_maps(agent, test_maps, 1, seed=2000 + seed, reward_config=reward_config_of(spec))
     n = 1 if spec.get("start") else FINAL_EVAL_EPISODES_RANDOM_START
     return evaluate(agent, functools.partial(make_env, spec), n, seed=2000 + seed)
 
@@ -168,7 +163,6 @@ def build_parser() -> argparse.ArgumentParser:
                        help="huấn luyện trên bản đồ ngẫu nhiên H x W với mật độ vật cản DENSITY")
     parser.add_argument("--n-train-maps", type=int, default=0, help="K bản đồ train cố định (0 = sinh mới mỗi episode)")
     parser.add_argument("--start", nargs="+", default=["random"], help="'random' hoặc R C (chỉ với --map)")
-    parser.add_argument("--hide-cleaned", action="store_true", help="E1 bản deep: ẩn kênh ô đã dọn")
     parser.add_argument("--reward", default="dense", choices=list(RewardConfig.PRESETS))
     parser.add_argument("--timesteps", type=int, default=200_000)
     parser.add_argument("--learning-rate", type=float, default=DQNConfig.learning_rate)
@@ -194,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_spec(args: argparse.Namespace) -> tuple[dict[str, Any], list[np.ndarray] | None]:
     """Spec môi trường + tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên)."""
-    spec: dict[str, Any] = {"reward": args.reward, "hide": args.hide_cleaned, "start": None,
+    spec: dict[str, Any] = {"reward": args.reward, "start": None,
                             "action_mask": args.action_mask, "egocentric": args.egocentric,
                             "shaping_coef": args.shaping_coef}
     if args.random_maps:

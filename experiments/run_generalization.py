@@ -108,7 +108,7 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
             exclude = test_maps
         test_sets[density] = test_maps
         spec = {"map": None, "random": (h, w, density), "pool": None, "exclude": exclude, "reward": args.reward,
-                "shaping_coef": args.shaping_coef, "hide": False, "start": None}
+                "shaping_coef": args.shaping_coef, "start": None}
         for seed in seeds:
             log_dir = out / "density" / f"{h}x{w}_d{density:g}{args.tag}" / f"seed{seed}"
             tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device, args), "log_dir": str(log_dir),
@@ -142,7 +142,7 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
     for k in k_values:
         pool = generate_map_set(h, w, density, k, seed=TRAIN_POOL_SEED, exclude=test_maps) if k > 0 else None
         spec = {"map": None, "random": (h, w, density), "pool": pool, "exclude": test_maps, "reward": args.reward,
-                "shaping_coef": args.shaping_coef, "hide": False, "start": None}
+                "shaping_coef": args.shaping_coef, "start": None}
         for seed in seeds:
             log_dir = out / "generalization" / f"{h}x{w}_d{density:g}_K{k}{args.tag}" / f"seed{seed}"
             tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device, args), "log_dir": str(log_dir),

@@ -140,7 +140,7 @@ python -c "from env.render import demo_random_gif; demo_random_gif('furniture_8x
 ## 7. Cấu trúc thư mục
 
 ```
-env/          môi trường: bản đồ, động lực học (transition thuần), render, wrapper
+env/          môi trường: bản đồ, động lực học (transition thuần), render
 baselines/    random_walk, zigzag, greedy_bfs (giao diện Agent chung)
 tabular/      đồ thị trạng thái, Value Iteration, Q-learning
 deep/         CNN, replay buffer, DQN

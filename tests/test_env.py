@@ -1,4 +1,4 @@
-"""Test cho env/vacuum_env.py và env/wrappers.py (bảng 4.2.5 của kế hoạch)."""
+"""Test cho env/vacuum_env.py (bảng 4.2.5 của kế hoạch)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from gymnasium.utils.env_checker import check_env
 from env.grid_utils import bfs_distance_to_nearest_uncleaned
 from env.maps import parse_map
 from env.vacuum_env import RandomMapVacuumEnv, RewardConfig, VacuumEnv, transition
-from env.wrappers import HideCleanedChannel
 
 SNAKE_3X3 = [3, 3, 1, 2, 2, 1, 3, 3]
 
@@ -249,12 +248,6 @@ def test_check_env_random_map(render_mode: str | None) -> None:
     check_env(RandomMapVacuumEnv(5, 5, 0.2, render_mode=render_mode), skip_render_check=render_mode is None)
 
 
-@pytest.mark.parametrize("render_mode", [None, "rgb_array", "ansi"])
-def test_check_env_hide_cleaned(render_mode: str | None) -> None:
-    check_env(HideCleanedChannel(VacuumEnv("obstacle_4x4", render_mode=render_mode)),
-              skip_render_check=render_mode is None)
-
-
 def test_ansi_render() -> None:
     env = VacuumEnv("obstacle_4x4", start=(0, 0), render_mode="ansi")
     env.reset(seed=0)
@@ -293,11 +286,3 @@ def test_random_map_env_exclude() -> None:
     for seed in range(30):
         env.reset(seed=seed)
         assert env.grid.tobytes() != exclude[0].tobytes()
-
-
-def test_hide_cleaned_channel() -> None:
-    env = HideCleanedChannel(VacuumEnv("empty_3x3", start=(0, 0)))
-    obs, _ = env.reset(seed=0)
-    assert obs[1].sum() == 0 and obs[0].sum() == 1
-    obs, *_ = env.step(3)
-    assert obs[1].sum() == 0 and obs[0][0, 1] == 1

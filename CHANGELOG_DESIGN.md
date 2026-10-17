@@ -102,3 +102,9 @@ Nhật ký thay đổi thiết kế so với `PLAN_rel.md` / `IMPLEMENTATION_PLA
 
   Giả thuyết E4 được xác nhận rõ: train trên 1 phòng thì thuộc lòng phòng đó (100% train, 61% test); càng nhiều phòng khác nhau thì khoảng cách train–test càng nhỏ, với K = ∞ gần như dọn hết mọi phòng lạ.
 - Proposed B8 row: | v4 | 2026-10-17 | E4 với DQN v4 | E4 cũ dùng DQN v1 | K=1: 61% test; K=∞: 100% test, 99% dọn xong |
+
+## 2026-10-17 — Gỡ `--hide-cleaned` (E1 bản DQN)
+
+- Change: gỡ `env/wrappers.py` (HideCleanedChannel), cờ `--hide-cleaned` của run_deep, tham số `wrap` của `evaluate_on_maps` và 4 test liên quan.
+- Reason: phần DQN của E1 là tùy chọn và chưa từng chạy; E1 đã có bằng chứng đầy đủ bằng Q-learning dạng bảng (state chỉ vị trí: 45% đã dọn, 0% dọn xong). Bỏ code không dùng tới.
+- Proposed B8 row: không cần.
