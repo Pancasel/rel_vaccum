@@ -25,7 +25,7 @@ configure_console()
 
 import numpy as np  # noqa: E402
 
-from env.maps import free_cells, get_map  # noqa: E402
+from env.maps import free_cells  # noqa: E402
 from env.vacuum_env import RewardConfig, VacuumEnv  # noqa: E402
 
 # Giới hạn số ô trống để còn tính được đáp án tối ưu chính xác bằng BFS trên đồ thị trạng thái.
@@ -98,11 +98,46 @@ def run_parallel(fn: Callable[..., Any], tasks: Iterable[dict[str, Any]], worker
         return [f.result() for f in futures]
 
 
-def grid_of(map_name: str) -> np.ndarray:
-    """Bản đồ cố định theo tên (bọc lại để thông báo lỗi rõ ràng trong CLI)."""
-    return get_map(map_name)
-
-
 def optimum_available(grid: np.ndarray) -> bool:
     """True nếu bản đồ đủ nhỏ để tính đáp án tối ưu chính xác."""
     return len(free_cells(grid)) <= MAX_FREE_FOR_OPTIMUM
+
+
+def optimal_steps_by_start(grid: np.ndarray) -> dict[tuple[int, int], int] | None:
+    """Số bước tối thiểu để dọn hết từ mỗi ô xuất phát (None nếu bản đồ quá lớn)."""
+    if not optimum_available(grid):
+        return None
+    from tabular.state_space import build_state_graph, min_steps_to_cover
+
+    graph = build_state_graph(grid)
+    return {start: min_steps_to_cover(graph, start) for start in free_cells(grid)}
+
+
+def optimal_value(grid: np.ndarray, start: tuple[int, int], reward: RewardConfig, gamma: float) -> float | None:
+    """V*(s0) bằng Value Iteration với đúng cấu hình reward và γ (None nếu bản đồ quá lớn)."""
+    if not optimum_available(grid):
+        return None
+    from tabular.state_space import build_state_graph
+    from tabular.value_iteration import value_iteration
+
+    return value_iteration(build_state_graph(grid, reward), gamma=gamma).value_of(start)
+
+
+def reference_steps(grid: np.ndarray, start: tuple[int, int] | None) -> dict[str, float]:
+    """Số bước tham chiếu để vẽ lên learning curve: tối ưu, greedy_bfs, zigzag.
+
+    start=None (xuất phát ngẫu nhiên) thì lấy trung bình trên mọi ô xuất phát.
+    """
+    from baselines import GreedyBFSAgent, ZigzagAgent
+    from experiments.evaluate import run_episode
+
+    starts = [start] if start is not None else free_cells(grid)
+    env = VacuumEnv(grid)
+    refs: dict[str, float] = {}
+    optimum = optimal_steps_by_start(grid)
+    if optimum is not None:
+        refs["tối ưu (VI)"] = float(np.mean([optimum[s] for s in starts]))
+    for name, agent in (("greedy_bfs", GreedyBFSAgent()), ("zigzag", ZigzagAgent())):
+        refs[name] = float(np.mean([run_episode(agent, env, seed=0, reset_options={"start": s})["steps"]
+                                    for s in starts]))
+    return refs

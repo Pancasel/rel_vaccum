@@ -96,14 +96,20 @@ def plot_learning_curves(df: pd.DataFrame, x: str, panels: list[tuple[str, str]]
                                                       FIG_SIZE[1]), squeeze=False)
     n_seeds = df["seed"].nunique()
     for ax, (col, ylabel) in zip(axes[0], panels):
+        # Tỷ lệ (coverage, success) nằm trong [0, 1]: cắt dải std để không vẽ giá trị vô nghĩa.
+        bounded = "coverage" in col or "success" in col
         for i, (name, group) in enumerate(df.groupby(hue, sort=False)):
             stats = _mean_std(group, x, col, smooth)
             color = color_for(str(name), i)
+            low, high = stats["mean"] - stats["std"], stats["mean"] + stats["std"]
+            if bounded:
+                low, high = low.clip(0.0, 1.0), high.clip(0.0, 1.0)
             ax.plot(stats[x], stats["mean"], color=color, label=str(name))
-            ax.fill_between(stats[x], stats["mean"] - stats["std"], stats["mean"] + stats["std"], color=color,
-                            alpha=0.2)
+            ax.fill_between(stats[x], low, high, color=color, alpha=0.2)
         for j, (label, value) in enumerate((hlines or {}).get(col, {}).items()):
-            ax.axhline(value, linestyle="--", linewidth=1.2, color=color_for(label, j + 5), label=label)
+            # Ghi giá trị vào chú thích: các đường tham chiếu trùng nhau vẫn đọc được.
+            ax.axhline(value, linestyle="--", linewidth=1.2, color=color_for(label, j + 5),
+                       label=f"{label} = {value:.4g}")
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.legend(fontsize=9)
