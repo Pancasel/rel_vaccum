@@ -70,3 +70,15 @@ def test_markdown_and_colors(tmp_path: Path) -> None:
     assert color_for("dqn") == "#d62728"
     assert color_for("something_new", 2).startswith("#")
     assert write_text("xin chào", tmp_path / "t.md").read_text(encoding="utf-8") == "xin chào"
+
+
+def test_compact_axis_numbers() -> None:
+    from experiments.plots import _compact_number
+
+    assert [_compact_number(v) for v in (0, 500, 2500, 20000, 1_500_000)] == ["0", "500", "2.5k", "20k", "1.5M"]
+
+
+def test_state_explosion_without_title(tmp_path: Path) -> None:
+    counts = pd.DataFrame({"grid": ["2x2", "3x3"], "n_free": [4, 9], "upper_bound": [64.0, 4608.0],
+                           "reachable": [28.0, 1081.0]})
+    assert plot_state_explosion(counts, tmp_path / "e7_untitled.png", title="").exists()

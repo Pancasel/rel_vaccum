@@ -1,0 +1,11 @@
+{
+  "name": "rel301-vacuum-slides",
+  "private": true,
+  "description": "Script dựng slide thuyết trình (pptx) cho dự án robot hút bụi RL",
+  "scripts": {
+    "build": "node build_deck.js"
+  },
+  "dependencies": {
+    "pptxgenjs": "^3.12.0"
+  }
+}

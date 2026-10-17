@@ -18,6 +18,7 @@ import matplotlib  # noqa: E402
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
@@ -40,6 +41,20 @@ plt.rcParams.update({"font.size": 11, "axes.titlesize": 12, "axes.grid": True, "
 def color_for(name: str, index: int = 0) -> str:
     """Màu cố định cho agent/cấu hình; tên lạ thì lấy màu theo thứ tự."""
     return AGENT_COLORS.get(name, matplotlib.colors.to_hex(_FALLBACK_COLORS[index % len(_FALLBACK_COLORS)]))
+
+
+def _compact_number(value: float, _pos: int | None = None) -> str:
+    """Nhãn trục gọn: 20000 -> 20k, 1500000 -> 1.5M (tránh các số dài dính vào nhau)."""
+    for scale, suffix in ((1e6, "M"), (1e3, "k")):
+        if abs(value) >= scale:
+            return f"{value / scale:g}{suffix}"
+    return f"{value:g}"
+
+
+def _tidy_x_axis(ax: plt.Axes) -> None:
+    """Tối đa ~5 vạch chia, số lớn viết gọn — cho trục số episode / số bước huấn luyện."""
+    ax.xaxis.set_major_locator(matplotlib.ticker.MaxNLocator(nbins=5, integer=True))
+    ax.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(_compact_number))
 
 
 def _save(fig: plt.Figure, out_path: str | os.PathLike) -> Path:
@@ -110,6 +125,7 @@ def plot_learning_curves(df: pd.DataFrame, x: str, panels: list[tuple[str, str]]
             # Ghi giá trị vào chú thích: các đường tham chiếu trùng nhau vẫn đọc được.
             ax.axhline(value, linestyle="--", linewidth=1.2, color=color_for(label, j + 5),
                        label=f"{label} = {value:.4g}")
+        _tidy_x_axis(ax)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.legend(fontsize=9)
@@ -167,7 +183,8 @@ def plot_lines_with_error(summary: pd.DataFrame, x: str, panels: list[tuple[str,
     return _save(fig, out_path)
 
 
-def plot_state_explosion(df: pd.DataFrame, out_path: str | os.PathLike, memory_limit_gb: float = 8.0) -> Path:
+def plot_state_explosion(df: pd.DataFrame, out_path: str | os.PathLike, memory_limit_gb: float = 8.0,
+                         title: str = "Bùng nổ không gian trạng thái của Q-learning dạng bảng") -> Path:
     """E7: số trạng thái theo số ô trống (thang log), đo thực tế và cận trên |F|·2^|F|."""
     fig, ax = plt.subplots(figsize=FIG_SIZE)
     df = df.sort_values("n_free")
@@ -184,7 +201,7 @@ def plot_state_explosion(df: pd.DataFrame, out_path: str | os.PathLike, memory_l
     ax.set_yscale("log")
     ax.set_xlabel("số ô trống |F|")
     ax.set_ylabel("số trạng thái (thang log)")
-    ax.set_title("Bùng nổ không gian trạng thái của Q-learning dạng bảng")
+    ax.set_title(title)
     ax.legend(fontsize=9)
     return _save(fig, out_path)
 

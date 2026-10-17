@@ -4,9 +4,31 @@
 .pytest_cache/
 __pycache__/
 *.pyc
-results/**/*.pt
 results/**/*.zip
 results/**/*.mp4
 results/raw/
 .ipynb_checkpoints/
+
+# Trọng số đã huấn luyện: mặc định KHÔNG commit (tổng ~540 MB: best.pt/last.pt trùng model.pt,
+# checkpoint trung gian, mô hình của phiên bản cũ v2/v3 và các lượt A/B, file Value Iteration sinh lại được).
+results/**/*.pt
 results/**/*.pkl
+# Chỉ giữ mô hình cuối của các phiên bản được dùng trong báo cáo và demo (đủ để chạy make_demo, kiểm tra kết quả).
+# Q-learning: mọi bảng Q, kể cả checkpoint cho GIF "robot học dần".
+!results/tabular/**/*.pkl
+!results/ablation/**/final.pkl
+# DQN trên phòng cố định (+ checkpoint seed 0 phòng 8x8 cho GIF "robot học dần").
+!results/deep/dqn/empty_3x3_s00/**/model.pt
+!results/deep/dqn/obstacle_4x4/**/model.pt
+!results/deep/dqn/furniture_8x8/**/model.pt
+!results/deep/dqn/furniture_8x8/seed0/checkpoints/*.pt
+# DQN v4 trên phòng lạ (bản chính, E3, E4) và DQN của E6.
+!results/deep/dqn/rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16/**/model.pt
+!results/generalization/density/*_mask_ego_*/**/model.pt
+!results/generalization/generalization/*_mask_ego_*/**/model.pt
+!results/optimality/dqn/**/model.pt
+
+# Dựng slide: thư viện npm, ảnh trung gian và ảnh kiểm tra sinh lại được.
+slides/build/node_modules/
+slides/build/assets/
+slides/build/render/
