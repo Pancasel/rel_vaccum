@@ -1,10 +1,8 @@
-"""T4.4 / E5: huấn luyện agent dạng bảng (Q-learning, SARSA, Double Q) trên nhiều seed, vẽ learning curve
-và hội tụ max Q(s0) về V* (đồ thị độ chệch tối đa hóa của E5).
+"""T4.4: huấn luyện Q-learning dạng bảng trên nhiều seed, vẽ learning curve và hội tụ về V*.
 
 Ví dụ:
     python -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --workers 5
     python -m experiments.run_tabular --map obstacle_4x4 --state-mode position_only
-    python -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --algos q_learning sarsa double_q --workers 5
     python -m experiments.run_tabular --quick
 """
 
@@ -25,18 +23,15 @@ from env.vacuum_env import RewardConfig  # noqa: E402
 from experiments.evaluate import evaluate, summarize  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_learning_curves, plot_q_convergence  # noqa: E402
 from tabular.common import TabularAgent, TabularConfig  # noqa: E402
-from tabular.double_q import DoubleQLearningAgent  # noqa: E402
 from tabular.q_learning import QLearningAgent  # noqa: E402
-from tabular.sarsa import SarsaAgent  # noqa: E402
 from utils.io import save_config_json, save_csv  # noqa: E402
 
-ALGOS: dict[str, type[TabularAgent]] = {"q_learning": QLearningAgent, "sarsa": SarsaAgent,
-                                        "double_q": DoubleQLearningAgent}
+ALGOS: dict[str, type[TabularAgent]] = {"q_learning": QLearningAgent}
 FINAL_EVAL_EPISODES_RANDOM_START: int = 50
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Huấn luyện agent dạng bảng (Q-learning, SARSA, Double Q).")
+    parser = argparse.ArgumentParser(description="Huấn luyện Q-learning dạng bảng.")
     parser.add_argument("--algos", nargs="+", default=["q_learning"], choices=list(ALGOS))
     parser.add_argument("--map", default="obstacle_4x4", choices=sorted(FIXED_MAPS))
     parser.add_argument("--start", nargs="+", default=["0", "0"], help="'random' hoặc R C (mặc định 0 0)")
@@ -114,7 +109,7 @@ def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start:
         eval_df, "episode", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
                              ("steps_mean", "số bước (chính sách tham lam)")], "algo",
         out_fig / f"tabular_learning_curve_{name}{tag}.png",
-        f"{', '.join(args.algos)} trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
+        f"Q-learning trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
         hlines={"steps_mean": refs})]
     if start is not None and args.state_mode == "full":
         v_star = optimal_value(grid, start, RewardConfig.from_name(args.reward), args.gamma)
