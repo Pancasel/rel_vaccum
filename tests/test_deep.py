@@ -10,7 +10,7 @@ import pytest
 import torch
 from torch import nn
 
-from deep.dqn import DQNAgent, DQNConfig, compute_targets, linear_epsilon
+from deep.dqn import DQNAgent, DQNConfig, compute_targets, linear_epsilon, resolve_device
 from deep.networks import QNetwork, count_parameters
 from deep.replay_buffer import ReplayBuffer
 from env.vacuum_env import VacuumEnv
@@ -93,6 +93,7 @@ def test_compute_targets_hand_values() -> None:
 def test_targets_use_target_network_only() -> None:
     agent = DQNAgent((3, 3, 3), DQNConfig(total_timesteps=10, batch_size=2, buffer_size=10))
     batch = {"next_obs": torch.rand(4, 3, 3, 3), "rewards": torch.zeros(4), "terminated": torch.zeros(4)}
+    batch = {k: v.to(agent.device) for k, v in batch.items()}  # cùng thiết bị với mạng (CPU hoặc GPU)
     before = compute_targets(batch, agent.target, 0.99)
     with torch.no_grad():
         for p in agent.online.parameters():
@@ -105,6 +106,19 @@ def test_linear_epsilon() -> None:
     assert linear_epsilon(0, cfg) == pytest.approx(1.0)
     assert linear_epsilon(500, cfg) == pytest.approx(0.05)
     assert linear_epsilon(999, cfg) == pytest.approx(0.05)
+
+
+def test_resolve_device() -> None:
+    assert resolve_device("cpu") == torch.device("cpu")
+    assert resolve_device("auto").type == ("cuda" if torch.cuda.is_available() else "cpu")
+    with pytest.raises(ValueError):
+        resolve_device("tpu")
+
+
+def test_load_on_cpu(tmp_path: Path) -> None:
+    agent = DQNAgent((3, 3, 3), DQNConfig(device="auto"))
+    loaded = DQNAgent.load(agent.save(tmp_path / "m.pt"), device="cpu")
+    assert next(loaded.online.parameters()).device.type == "cpu"
 
 
 def test_config_validation() -> None:

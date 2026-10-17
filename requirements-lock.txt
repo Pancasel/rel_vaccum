@@ -26,6 +26,6 @@ python-dateutil==2.9.0.post0
 setuptools==78.1.0
 six==1.17.0
 sympy==1.14.0
-torch==2.14.1+cpu
+torch==2.14.1+cu130
 typing_extensions==4.16.0
 tzdata==2026.5

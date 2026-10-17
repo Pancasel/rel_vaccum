@@ -1,0 +1,2 @@
+episode,env_seed,start_row,start_col,return_undiscounted,return_discounted,coverage,steps,steps_to_full,redundancy,collisions,n_revisit,terminated,truncated
+0,10020000,0,0,-4.62,-3.3773690895835022,0.15384615384615385,52,,0.9807692307692307,0,51,False,True

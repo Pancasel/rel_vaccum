@@ -1,0 +1,3 @@
+variant,n,success_rate,coverage_mean,coverage_std,steps_mean,steps_std,redundancy_mean
+full,5,1.0,1.0,0.0,13.0,0.0,0.07692307692307693
+position_only,5,0.0,0.4461538461538462,0.2202741702042516,52.0,0.0,0.7230769230769231

@@ -40,14 +40,20 @@ STEPS: list[tuple[str, str, list[str], bool]] = [
 ]
 
 
+# Các script có huấn luyện DQN, nhận tham số --device.
+DEVICE_MODULES = {"experiments.run_deep", "experiments.run_generalization", "experiments.run_optimality"}
+
+
 def build_command(name: str, module: str, args: list[str], takes_workers: bool, quick: bool,
-                  workers: int) -> list[str]:
+                  workers: int, device: str = "auto") -> list[str]:
     """Dòng lệnh cho một bước; chế độ quick ghi vào results/_quick/<tên bước>."""
     cmd = [sys.executable, "-m", module, *args]
     if quick:
         cmd += ["--quick", "--out", f"results/_quick/{name}"]
     if takes_workers and workers > 1:
         cmd += ["--workers", str(workers)]
+    if module in DEVICE_MODULES and device != "auto":
+        cmd += ["--device", device]
     return cmd
 
 
@@ -57,11 +63,12 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--quick", action="store_true", help="chạy rút gọn để kiểm tra luồng")
     mode.add_argument("--full", action="store_true", help="chạy đầy đủ như báo cáo")
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--device", default="auto", help="thiết bị cho DQN: auto | cpu | cuda")
     parser.add_argument("--only", nargs="+", choices=[s[0] for s in STEPS], help="chỉ chạy các bước này")
     args = parser.parse_args(argv)
     selected = [s for s in STEPS if not args.only or s[0] in args.only]
     for i, (name, module, step_args, takes_workers) in enumerate(selected, 1):
-        cmd = build_command(name, module, step_args, takes_workers, args.quick, args.workers)
+        cmd = build_command(name, module, step_args, takes_workers, args.quick, args.workers, args.device)
         print(f"\n[{i}/{len(selected)}] {name}: {' '.join(cmd[1:])}", flush=True)
         t0 = time.monotonic()
         code = subprocess.run(cmd, cwd=ROOT).returncode

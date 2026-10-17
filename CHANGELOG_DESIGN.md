@@ -41,3 +41,10 @@ Nhật ký thay đổi thiết kế so với `PLAN_rel.md` / `IMPLEMENTATION_PLA
 - Change: không đổi code; ghi nhận kết quả.
 - Reason/Evidence: với xuất phát cố định trên phòng TRỐNG, Q-learning dạng bảng vẫn học tới 6x6 trong 15 phút (35 bước = tối ưu), nhưng bảng Q phình tới ~1.95 triệu trạng thái (~746 MB) và chỉ dùng được cho đúng một phòng + một điểm xuất phát. Giới hạn thật của tabular là bộ nhớ và không khái quát được, không phải "không học được" trên phòng nhỏ. (results/tabular/scaling.csv)
 - Proposed B8 row: | — | 2026-10-17 | Ghi nhận: tabular học được 6x6 trống khi start cố định | Kết quả thực nghiệm | Giới hạn là bộ nhớ + không khái quát, lý do cần DQN |
+
+## 2026-10-17 — Huấn luyện trên GPU
+
+- Change: cài torch bản CUDA (`torch 2.14.1+cu130`) thay bản CPU; `DQNConfig.device = "auto"` (GPU nếu có, ngược lại CPU), tham số `--device` cho run_deep / run_generalization / run_optimality / reproduce_all; `DQNAgent.load(path, device=...)`.
+- Reason: máy có RTX 4050 Laptop 6 GB; lần cài đầu dùng bản CPU theo hướng dẫn trong kế hoạch mà không kiểm tra GPU (lỗi của agent).
+- Evidence/result (đo trên furniture_8x8, 12k bước): 1 tiến trình — CPU 1 luồng 2.65 ms/bước, CPU 4 luồng 1.96, GPU 1.92. Sáu tiến trình song song — CPU 4.0 ms/bước mỗi tiến trình, GPU 3.7. Mạng nhỏ nên thời gian chủ yếu nằm ở chạy môi trường và gọi hàm Python mỗi bước, GPU chỉ nhanh hơn ~10–40%. Cách dùng tốt nhất: chia thí nghiệm cho cả GPU và CPU chạy đồng thời.
+- Proposed B8 row: | — | 2026-10-17 | Huấn luyện DQN trên GPU (auto) | Máy có RTX 4050 | Nhanh hơn ~10–40% mỗi tiến trình; chạy song song GPU + CPU để tăng thông lượng |

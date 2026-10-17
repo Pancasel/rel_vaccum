@@ -49,12 +49,12 @@ def train_q(map_name: str, start: tuple[int, int], episodes: int, seed: int) -> 
     return {"map": map_name, "start": start, "seed": seed, "steps": run_episode(agent, factory(), seed=0)["steps"]}
 
 
-def train_dqn(map_name: str, timesteps: int, seed: int, log_dir: str) -> dict[str, Any]:
+def train_dqn(map_name: str, timesteps: int, seed: int, log_dir: str, device: str = "auto") -> dict[str, Any]:
     """DQN cho một bản đồ (xuất phát ngẫu nhiên); trả số bước từ từng ô xuất phát của bảng E6."""
     factory = functools.partial(VacuumEnv, map_name)
     agent = DQNAgent((3, *get_map(map_name).shape),
                      DQNConfig(total_timesteps=timesteps, learning_starts=min(2_000, timesteps // 5),
-                               eval_every_steps=max(1, timesteps // 10), eval_episodes=10, seed=seed))
+                               eval_every_steps=max(1, timesteps // 10), eval_episodes=10, device=device, seed=seed))
     agent.train(factory, log_dir)
     env = factory()
     return {"map": map_name, "seed": seed,
@@ -76,6 +76,7 @@ def cell(values: list[float], optimum: int) -> str:
 def main(argv: list[str] | None = None) -> pd.DataFrame:
     parser = argparse.ArgumentParser(description="E6: khoảng cách tới tối ưu trên lưới nhỏ.")
     parser.add_argument("--maps", nargs="+", default=list(STARTS), choices=list(STARTS))
+    parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
     add_common_args(parser, "results/optimality")
     args = parser.parse_args(argv)
     out = resolve_out(args.out)
@@ -85,7 +86,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     q_tasks = [{"map_name": m, "start": s, "episodes": q_eps[m], "seed": seed}
                for m in args.maps for s in STARTS[m] for seed in seeds]
-    d_tasks = [{"map_name": m, "timesteps": dqn_steps[m], "seed": seed, "log_dir": str(out / "dqn" / m / f"seed{seed}")}
+    d_tasks = [{"map_name": m, "timesteps": dqn_steps[m], "seed": seed, "log_dir": str(out / "dqn" / m / f"seed{seed}"), "device": args.device}
                for m in args.maps for seed in seeds]
     results = run_parallel(dispatch_task, [{"kind": "q", "kwargs": t} for t in q_tasks] +
                            [{"kind": "dqn", "kwargs": t} for t in d_tasks], workers=args.workers)

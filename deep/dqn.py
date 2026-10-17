@@ -63,7 +63,7 @@ class DQNConfig:
     eval_every_steps: int = 5_000
     eval_episodes: int = 20
     log_every_steps: int = 500
-    device: str = "cpu"
+    device: str = "auto"  # "auto" = GPU (CUDA) nếu có, ngược lại CPU; hoặc "cpu" / "cuda"
     seed: int = 0
 
     def __post_init__(self) -> None:
@@ -81,6 +81,17 @@ class DQNConfig:
         if not 0.0 < self.epsilon_decay_fraction <= 1.0:
             raise ValueError("epsilon_decay_fraction phải trong (0, 1].")
         self.checkpoint_steps = tuple(int(s) for s in self.checkpoint_steps)
+
+
+def resolve_device(name: str) -> torch.device:
+    """"auto" -> cuda nếu máy có GPU, ngược lại cpu. Báo lỗi rõ ràng nếu đòi "cuda" mà không có GPU."""
+    if name == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if name.startswith("cuda") and not torch.cuda.is_available():
+        raise ValueError("Yêu cầu device 'cuda' nhưng torch không thấy GPU (cài bản torch CUDA hoặc dùng 'cpu').")
+    if name != "cpu" and not name.startswith("cuda"):
+        raise ValueError(f"device phải là 'auto', 'cpu' hoặc 'cuda', nhận được '{name}'.")
+    return torch.device(name)
 
 
 def linear_epsilon(step: int, cfg: DQNConfig) -> float:
@@ -110,7 +121,7 @@ class DQNAgent:
             raise ValueError(f"obs_shape phải là (3, H, W), nhận được {obs_shape}.")
         self.obs_shape = tuple(int(v) for v in obs_shape)
         self.cfg = cfg
-        self.device = torch.device(cfg.device)
+        self.device = resolve_device(cfg.device)
         set_global_seed(cfg.seed)  # khởi tạo trọng số tái lập được
         self.online = QNetwork(self.obs_shape[1], self.obs_shape[2]).to(self.device)
         self.target = copy.deepcopy(self.online)
@@ -232,11 +243,16 @@ class DQNAgent:
         return resolved
 
     @classmethod
-    def load(cls, path: str | os.PathLike) -> "DQNAgent":
-        """Đọc agent đã lưu (target network được đặt bằng online)."""
+    def load(cls, path: str | os.PathLike, device: str = "auto") -> "DQNAgent":
+        """Đọc agent đã lưu (target network được đặt bằng online).
+
+        Args:
+            device: thiết bị chạy mô hình sau khi đọc (mô hình huấn luyện trên GPU vẫn đọc được trên CPU).
+        """
         payload = torch.load(Path(path), map_location="cpu", weights_only=False)
         config = dict(payload["config"])
         config["checkpoint_steps"] = tuple(config.get("checkpoint_steps", ()))
+        config["device"] = device
         agent = cls(tuple(payload["obs_shape"]), DQNConfig(**config))
         agent.online.load_state_dict(payload["state_dict"])
         agent.target.load_state_dict(payload["state_dict"])

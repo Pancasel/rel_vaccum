@@ -67,3 +67,35 @@
 [2/10] value_iteration: xong sau 20 s
 
 [3/10] tabular_3x3: -m experiments.run_tabular --map empty_3x3 --start 0 0 --episodes 5000 --workers 5
+| algo | n_seeds | coverage_mean_avg | steps_mean_avg | success_rate_avg | redundancy_mean_avg | gap_pct_avg | coverage_mean_sd | steps_mean_sd | success_rate_sd | redundancy_mean_sd | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| q_learning | 5 | 1.00 | 8.00 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\tabular_learning_curve_empty_3x3.png
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\q_convergence_empty_3x3.png
+[3/10] tabular_3x3: xong sau 44 s
+
+[4/10] tabular_4x4: -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --episodes 50000 --workers 5
+| algo | n_seeds | coverage_mean_avg | steps_mean_avg | success_rate_avg | redundancy_mean_avg | gap_pct_avg | coverage_mean_sd | steps_mean_sd | success_rate_sd | redundancy_mean_sd | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| q_learning | 5 | 1.00 | 13.00 | 1.00 | 0.08 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\tabular_learning_curve_obstacle_4x4.png
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\q_convergence_obstacle_4x4.png
+[4/10] tabular_4x4: xong sau 228 s
+
+[5/10] tabular_4x4_random_start: -m experiments.run_tabular --map obstacle_4x4 --start random --episodes 50000 --workers 5
+| algo | n_seeds | coverage_mean_avg | steps_mean_avg | success_rate_avg | redundancy_mean_avg | gap_pct_avg | coverage_mean_sd | steps_mean_sd | success_rate_sd | redundancy_mean_sd | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| q_learning | 5 | 1.00 | 12.72 | 1.00 | 0.06 | 0.10 | 0.00 | 0.08 | 0.00 | 0.01 | 0.22 |
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\tabular_learning_curve_obstacle_4x4.png
+[5/10] tabular_4x4_random_start: xong sau 283 s
+
+[6/10] e1_markov: -m experiments.run_ablation --exp markov --map obstacle_4x4 --workers 5
+| variant | n | success_rate | coverage_mean | coverage_std | steps_mean | steps_std | redundancy_mean |
+|---|---|---|---|---|---|---|---|
+| full | 5 | 1.00 | 1.00 | 0.00 | 13.00 | 0.00 | 0.08 |
+| position_only | 5 | 0.00 | 0.45 | 0.22 | 52.00 | 0.00 | 0.72 |
+
+- position_only_gif: {'steps': 52, 'coverage': 0.46153846153846156, 'return_undiscounted': -0.22000000000000092, 'terminated': False, 'truncated': True, 'frames': 53}
+[6/10] e1_markov: xong sau 287 s
+
+[7/10] e2_reward: -m experiments.run_ablation --exp reward --map obstacle_4x4 --workers 5

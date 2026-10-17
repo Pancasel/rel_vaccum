@@ -40,20 +40,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--k-values", type=int, nargs="+", default=[1, 10, 100, 0], help="K bản đồ train (0 = vô hạn)")
     parser.add_argument("--n-test-maps", type=int, default=None, help="mặc định 20 (E3), 50 (E4)")
     parser.add_argument("--timesteps", type=int, default=300_000)
+    parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
     add_common_args(parser, "results/generalization")
     parser.set_defaults(seeds=[0, 1, 2])
     return parser
 
 
-def dqn_cfg(timesteps: int, seed: int, quick: bool) -> dict[str, Any]:
+def dqn_cfg(timesteps: int, seed: int, quick: bool, device: str) -> dict[str, Any]:
     """Cấu hình DQN chung cho E3/E4 (giống run_deep để kết quả so sánh được)."""
     cfg = DQNConfig(total_timesteps=timesteps, learning_starts=min(DQNConfig.learning_starts, timesteps // 5),
                     eval_every_steps=max(1, timesteps // 20), eval_episodes=2 if quick else 20,
-                    log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)), seed=seed)
+                    log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)), device=device, seed=seed)
     return cfg.__dict__.copy()
 
 
-def evaluate_agents(test_maps: list[np.ndarray], dqn_dirs: list[tuple[int, Path]], seeds: list[int]) -> pd.DataFrame:
+def evaluate_agents(test_maps: list[np.ndarray], dqn_dirs: list[tuple[int, Path]], seeds: list[int],
+                    device: str = "auto") -> pd.DataFrame:
     """Mọi agent trên cùng tập bản đồ test; mỗi seed cho một giá trị trung bình (để lấy std qua seed)."""
     rows = []
     for seed in seeds:
@@ -61,7 +63,7 @@ def evaluate_agents(test_maps: list[np.ndarray], dqn_dirs: list[tuple[int, Path]
             df = evaluate_on_maps(make_baseline(name, seed=seed), test_maps, EPISODES_PER_TEST_MAP, seed=seed)
             rows.append({"agent": name, "seed": seed, **summarize(df).iloc[0].to_dict()})
     for seed, log_dir in dqn_dirs:
-        agent = DQNAgent.load(log_dir / "model.pt")
+        agent = DQNAgent.load(log_dir / "model.pt", device=device)
         df = evaluate_on_maps(agent, test_maps, EPISODES_PER_TEST_MAP, seed=seed)
         rows.append({"agent": "dqn", "seed": seed, **summarize(df).iloc[0].to_dict()})
     return pd.DataFrame(rows)
@@ -94,14 +96,14 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
                 "hide": False, "start": None}
         for seed in seeds:
             log_dir = out / "density" / f"{h}x{w}_d{density:g}" / f"seed{seed}"
-            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick), "log_dir": str(log_dir),
+            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device), "log_dir": str(log_dir),
                           "test_maps": test_maps})
             meta.append((density, seed, log_dir))
     run_parallel(train_one, tasks, workers=args.workers)
     per_seed = []
     for density, test_maps in test_sets.items():
         dirs = [(seed, log_dir) for d, seed, log_dir in meta if d == density]
-        per_seed.append(evaluate_agents(test_maps, dirs, seeds).assign(density=density))
+        per_seed.append(evaluate_agents(test_maps, dirs, seeds, args.device).assign(density=density))
     table = across_seeds(pd.concat(per_seed, ignore_index=True), ["density", "agent"])
     plot_lines_with_error(table, "density",
                           [("coverage_mean", "coverage_mean_sd", "tỷ lệ đã dọn"),
@@ -127,13 +129,13 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
                 "hide": False, "start": None}
         for seed in seeds:
             log_dir = out / "generalization" / f"{h}x{w}_d{density:g}_K{k}" / f"seed{seed}"
-            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick), "log_dir": str(log_dir),
+            tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device), "log_dir": str(log_dir),
                           "test_maps": test_maps})
             meta.append((k, seed, log_dir, pool))
     run_parallel(train_one, tasks, workers=args.workers)
     rows = []
     for k, seed, log_dir, pool in meta:
-        agent = DQNAgent.load(log_dir / "model.pt")
+        agent = DQNAgent.load(log_dir / "model.pt", device=args.device)
         splits = {"test (chưa gặp)": test_maps}
         if pool is not None:
             splits["train (đã gặp)"] = pool[:n_test]

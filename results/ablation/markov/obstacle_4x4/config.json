@@ -1,0 +1,46 @@
+{
+  "config": {
+    "args": {
+      "exp": "markov",
+      "map": "obstacle_4x4",
+      "episodes": 20000,
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "out": "results/ablation",
+      "quick": false,
+      "workers": 5
+    },
+    "episodes": 20000,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "start": [
+      0,
+      0
+    ],
+    "position_only_gif": {
+      "steps": 52,
+      "coverage": 0.46153846153846156,
+      "return_undiscounted": -0.22000000000000092,
+      "terminated": false,
+      "truncated": true,
+      "frames": 53
+    }
+  },
+  "meta": {
+    "timestamp": "2026-10-17T11:28:21",
+    "git_commit": "26fcffac1c80bd3f65aad6bc442f09d3af4ca03d",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cpu"
+  }
+}

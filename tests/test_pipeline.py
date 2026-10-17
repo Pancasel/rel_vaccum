@@ -95,3 +95,6 @@ def test_reproduce_all_commands() -> None:
     cmd = reproduce_all.build_command("x", "experiments.run_deep", ["--map", "empty_3x3"], True, quick=True, workers=4)
     assert cmd[1:] == ["-m", "experiments.run_deep", "--map", "empty_3x3", "--quick", "--out", "results/_quick/x",
                        "--workers", "4"]
+    cmd = reproduce_all.build_command("y", "experiments.run_deep", [], False, quick=False, workers=1, device="cpu")
+    assert cmd[-2:] == ["--device", "cpu"]
+    assert "--device" not in reproduce_all.build_command("z", "experiments.run_baselines", [], False, False, 1, "cpu")
