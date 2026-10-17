@@ -225,8 +225,7 @@ def visit_heatmap(visits: np.ndarray, grid: np.ndarray, ax: Any = None, vmax: fl
     if ax is None:
         _, ax = plt.subplots(figsize=(4, 4))
     data = np.ma.masked_where(grid == OBSTACLE, visits.astype(float))
-    cmap = plt.get_cmap("Reds").copy()
-    cmap.set_bad(color=np.array(COLORS["obstacle"]) / 255.0)
+    cmap = plt.get_cmap("Reds").with_extremes(bad=np.array(COLORS["obstacle"]) / 255.0)
     image = ax.imshow(data, cmap=cmap, vmin=0, vmax=vmax)
     for (r, c), v in np.ndenumerate(visits):
         if grid[r, c] != OBSTACLE:
