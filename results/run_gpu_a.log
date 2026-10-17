@@ -1,0 +1,20 @@
+
+[1/2] deep_furniture: -m experiments.run_deep --map furniture_8x8 --timesteps 500000 --workers 5 --device cuda
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\DoQuocAn\ki8\REL\project_vaccum\experiments\run_deep.py", line 202, in <module>
+    main()
+    ~~~~^^
+  File "D:\DoQuocAn\ki8\REL\project_vaccum\experiments\run_deep.py", line 180, in main
+    results = run_parallel(train_one, tasks, workers=args.workers)
+  File "D:\DoQuocAn\ki8\REL\project_vaccum\experiments\common.py", line 98, in run_parallel
+    return [f.result() for f in futures]
+            ~~~~~~~~^^
+  File "C:\anaconda3\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\anaconda3\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+concurrent.futures.process.BrokenProcessPool: A process in the process pool was terminated abruptly while the future was running or pending.
+Bước 'deep_furniture' lỗi (mã 1). Dừng lại.

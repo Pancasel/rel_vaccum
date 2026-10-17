@@ -72,7 +72,13 @@ Một lệnh cho tất cả (dừng ở bước đầu tiên bị lỗi):
 
 ```powershell
 python -m experiments.reproduce_all --quick                # kiểm tra luồng, vài phút, ghi vào results/_quick/
-python -m experiments.reproduce_all --full --workers 8     # chạy thật, nhiều giờ trên CPU
+python -m experiments.reproduce_all --full --workers 3     # chạy thật, nhiều giờ
+```
+
+Bộ nhớ: mỗi tiến trình huấn luyện DQN dùng ~0.8 GB RAM (CPU) hoặc ~1.4 GB (GPU). Với máy 16 GB RAM,
+chạy tối đa ~5 tiến trình cùng lúc (`--workers`), không chạy nhiều lệnh `reproduce_all` song song.
+
+```powershell
 ```
 
 Hoặc từng thí nghiệm:
@@ -87,8 +93,8 @@ Hoặc từng thí nghiệm:
 | E2 thiết kế reward | `python -m experiments.run_ablation --exp reward --workers 5` | `results/ablation/figures/e2_reward_curves_obstacle_4x4.png`, GIF reward hacking | ~5 phút |
 | DQN 3 bậc | `python -m experiments.run_deep --map obstacle_4x4 --timesteps 200000 --workers 5` (và `empty_3x3`, `furniture_8x8`) | `results/deep/dqn/*/summary.csv`, `results/deep/figures/` | 10–60 phút |
 | DQN phòng ngẫu nhiên | `python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 500000 --workers 5` | `results/deep/dqn/rand8x8_d0.15_K0/` | ~1 giờ |
-| E3 mật độ vật cản | `python -m experiments.run_generalization --exp density --timesteps 500000 --workers 6` | `results/generalization/figures/e3_density_8x8.png` | ~2 giờ |
-| E4 khái quát hóa | `python -m experiments.run_generalization --exp generalization --timesteps 300000 --workers 6` | `results/generalization/figures/e4_generalization_6x6.png` | ~1 giờ |
+| E3 mật độ vật cản | `python -m experiments.run_generalization --exp density --timesteps 300000 --workers 2` | `results/generalization/figures/e3_density_8x8.png` | ~2 giờ |
+| E4 khái quát hóa | `python -m experiments.run_generalization --exp generalization --timesteps 200000 --workers 3` | `results/generalization/figures/e4_generalization_6x6.png` | ~1 giờ |
 | E6 khoảng cách tối ưu | `python -m experiments.run_optimality --workers 5` | `results/optimality/e6_optimality_gap.md` | ~30 phút |
 | Demo | `python -m experiments.make_demo` | `results/demo/*.gif`, `demo_summary.md` | ~1 phút |
 

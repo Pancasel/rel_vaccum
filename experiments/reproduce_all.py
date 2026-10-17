@@ -33,8 +33,8 @@ STEPS: list[tuple[str, str, list[str], bool]] = [
     ("deep_4x4", "experiments.run_deep", ["--map", "obstacle_4x4", "--timesteps", "200000"], True),
     ("deep_furniture", "experiments.run_deep", ["--map", "furniture_8x8", "--timesteps", "500000"], True),
     ("deep_random_8x8", "experiments.run_deep", ["--random-maps", "8", "8", "0.15", "--timesteps", "500000"], True),
-    ("e3_density", "experiments.run_generalization", ["--exp", "density", "--timesteps", "500000"], True),
-    ("e4_generalization", "experiments.run_generalization", ["--exp", "generalization", "--timesteps", "300000"], True),
+    ("e3_density", "experiments.run_generalization", ["--exp", "density", "--timesteps", "300000"], True),
+    ("e4_generalization", "experiments.run_generalization", ["--exp", "generalization", "--timesteps", "200000"], True),
     ("e6_optimality", "experiments.run_optimality", [], True),
     ("demo", "experiments.make_demo", [], False),
 ]
