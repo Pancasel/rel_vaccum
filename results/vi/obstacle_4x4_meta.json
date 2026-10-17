@@ -2,6 +2,6 @@
   "map": "obstacle_4x4",
   "n_states": 4688,
   "n_iterations": 14,
-  "runtime_s": 0.276,
+  "runtime_s": 0.389,
   "gamma": 0.99
 }

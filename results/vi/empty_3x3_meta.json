@@ -2,6 +2,6 @@
   "map": "empty_3x3",
   "n_states": 1081,
   "n_iterations": 10,
-  "runtime_s": 0.096,
+  "runtime_s": 0.088,
   "gamma": 0.99
 }

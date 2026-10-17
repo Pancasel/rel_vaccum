@@ -1,0 +1,2 @@
+
+[1/2] e3_density: -m experiments.run_generalization --exp density --timesteps 500000 --workers 6

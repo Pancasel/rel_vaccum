@@ -1,0 +1,2 @@
+
+[1/2] deep_furniture: -m experiments.run_deep --map furniture_8x8 --timesteps 500000 --workers 5
