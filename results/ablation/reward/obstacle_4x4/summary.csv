@@ -1,0 +1,5 @@
+variant,n,success_rate,coverage_mean,coverage_std,steps_mean,steps_std,redundancy_mean
+sparse,5,1.0,1.0,0.0,13.0,0.0,0.07692307692307693
+dense,5,1.0,1.0,0.0,13.0,0.0,0.07692307692307693
+shaped,5,1.0,1.0,0.0,13.0,0.0,0.07692307692307693
+hackable,5,0.0,0.9230769230769231,0.0,52.0,0.0,0.7884615384615384

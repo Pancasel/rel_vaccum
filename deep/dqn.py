@@ -64,6 +64,10 @@ class DQNConfig:
     eval_episodes: int = 20
     log_every_steps: int = 500
     device: str = "auto"  # "auto" = GPU (CUDA) nếu có, ngược lại CPU; hoặc "cpu" / "cuda"
+    # Cải tiến v3 (B2 "action masking"): bỏ các hướng đâm vào tường/vật cản khi chọn hành động và khi
+    # lấy max trong mục tiêu. Va chạm không bao giờ có ích (chỉ bị phạt và đứng yên), nên che chúng đi
+    # không làm mất chính sách tối ưu mà loại được vòng lặp "đâm tường mãi" của chính sách tất định.
+    action_mask: bool = False
     seed: int = 0
 
     def __post_init__(self) -> None:
@@ -101,14 +105,33 @@ def linear_epsilon(step: int, cfg: DQNConfig) -> float:
     return cfg.epsilon_start + frac * (cfg.epsilon_end - cfg.epsilon_start)
 
 
-def compute_targets(batch: dict[str, torch.Tensor], target: nn.Module, gamma: float) -> torch.Tensor:
-    """y = r + γ (1 − terminated) max_a Q_target(s', a).
+MASKED_Q: float = -1e9  # giá trị gán cho hành động bị che (dùng số hữu hạn để 0 * MASKED_Q = 0, không ra NaN)
+
+
+def valid_action_mask(obs: torch.Tensor) -> torch.Tensor:
+    """Mặt nạ (B, 4) bool: hành động nào KHÔNG đâm vào tường/vật cản, tính từ observation (B, 3, H, W).
+
+    Đệm viền bằng vật cản rồi lấy ô vật cản ngay trên/dưới/trái/phải vị trí robot (thứ tự hành động D-02).
+    """
+    robot = obs[:, 0]
+    walls = nn.functional.pad(obs[:, 2], (1, 1, 1, 1), value=1.0)
+    neighbours = (walls[:, :-2, 1:-1], walls[:, 2:, 1:-1], walls[:, 1:-1, :-2], walls[:, 1:-1, 2:])
+    blocked = torch.stack([(robot * n).sum(dim=(1, 2)) for n in neighbours], dim=1)
+    return blocked < 0.5
+
+
+def compute_targets(batch: dict[str, torch.Tensor], target: nn.Module, gamma: float,
+                    action_mask: bool = False) -> torch.Tensor:
+    """y = r + γ (1 − terminated) max_a Q_target(s', a)  (max chỉ trên hành động hợp lệ nếu action_mask).
 
     Hàm chỉ nhận target network nên không thể vô tình dùng nhầm mạng online.
     """
     with torch.no_grad():
         # Sutton & Barto 6.5: "R + γ max_a Q(S',a)"; max lấy trên target network (Mnih 2015).
-        next_q = target(batch["next_obs"]).max(dim=1).values
+        q_next = target(batch["next_obs"])
+        if action_mask:
+            q_next = q_next.masked_fill(~valid_action_mask(batch["next_obs"]), MASKED_Q)
+        next_q = q_next.max(dim=1).values
         # terminated = 1 -> S' là terminal -> Q(S',·) = 0 -> mục tiêu chỉ còn R.
         return batch["rewards"] + gamma * (1.0 - batch["terminated"]) * next_q
 
@@ -136,11 +159,27 @@ class DQNAgent:
             x = torch.as_tensor(obs, dtype=torch.float32, device=self.device).unsqueeze(0)
             return self.online(x)[0].cpu().numpy()
 
+    def _valid_actions(self, obs: np.ndarray) -> np.ndarray:
+        """Chỉ số các hành động được phép (tất cả nếu tắt action_mask)."""
+        if not self.cfg.action_mask:
+            return np.arange(N_ACTIONS)
+        mask = valid_action_mask(torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0))[0].numpy()
+        return np.flatnonzero(mask)
+
+    def random_action(self, obs: np.ndarray) -> int:
+        """Hành động ngẫu nhiên đều (trong các hành động hợp lệ nếu bật action_mask)."""
+        if not self.cfg.action_mask:
+            # Giữ đúng cách rút số cũ để các kết quả đã chạy (không mask) tái lập được theo seed.
+            return int(self.rng.integers(N_ACTIONS))
+        return int(self.rng.choice(self._valid_actions(obs)))
+
     def act(self, obs: np.ndarray, info: dict | None = None, epsilon: float = 0.0) -> int:
         """ε-greedy theo mạng online; epsilon=0 (mặc định) là chính sách tham lam để đánh giá."""
         if epsilon > 0.0 and self.rng.random() < epsilon:
-            return int(self.rng.integers(N_ACTIONS))
-        return int(np.argmax(self.q_values(obs)))
+            return self.random_action(obs)
+        q = self.q_values(obs)
+        valid = self._valid_actions(obs)
+        return int(valid[np.argmax(q[valid])])
 
     # ------------------------------------------------------------------ một bước học
     def _learn(self, buffer: ReplayBuffer) -> dict[str, float]:
@@ -149,7 +188,7 @@ class DQNAgent:
         raw = buffer.sample(cfg.batch_size)
         batch = {k: torch.as_tensor(v, device=self.device) for k, v in raw.items()}
         batch["rewards"] = batch["rewards"] * cfg.reward_scale
-        y = compute_targets(batch, self.target, cfg.gamma)
+        y = compute_targets(batch, self.target, cfg.gamma, cfg.action_mask)
         q_all = self.online(batch["obs"])
         q_sa = q_all.gather(1, batch["actions"].unsqueeze(1)).squeeze(1)
         # "Q(S,A) <- Q(S,A) + α[target − Q(S,A)]" trở thành: giảm sai khác (Q(S,A) − target) bằng gradient.
@@ -196,7 +235,7 @@ class DQNAgent:
             epsilon = linear_epsilon(t - 1, cfg)
             # "Choose A from S using policy derived from Q (ε-greedy)"; giai đoạn đầu đi ngẫu nhiên để lấp buffer.
             explore = t <= cfg.learning_starts
-            action = int(self.rng.integers(N_ACTIONS)) if explore else self.act(obs, epsilon=epsilon)
+            action = self.random_action(obs) if explore else self.act(obs, epsilon=epsilon)
             # "Take action A, observe R, S'"
             next_obs, reward, terminated, truncated, info = env.step(action)
             buffer.add(obs, action, reward, next_obs, terminated)  # chỉ lưu terminated (C2.11)

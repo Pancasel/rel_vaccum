@@ -1,0 +1,45 @@
+{
+  "config": {
+    "args": {
+      "exp": "density",
+      "size": null,
+      "densities": [
+        0.0,
+        0.1,
+        0.2,
+        0.3
+      ],
+      "density": 0.15,
+      "k_values": [
+        1,
+        10,
+        100,
+        0
+      ],
+      "n_test_maps": null,
+      "timesteps": 300000,
+      "device": "cpu",
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "out": "results/generalization",
+      "quick": false,
+      "workers": 3
+    },
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "timesteps": 300000
+  },
+  "meta": {
+    "timestamp": "2026-10-17T15:00:47",
+    "git_commit": "19e8c9900b22831854d6e327a7bdf5db4d4c8f34",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cu130"
+  }
+}

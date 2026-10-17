@@ -10,7 +10,7 @@ import pytest
 import torch
 from torch import nn
 
-from deep.dqn import DQNAgent, DQNConfig, compute_targets, linear_epsilon, resolve_device
+from deep.dqn import DQNAgent, DQNConfig, compute_targets, linear_epsilon, resolve_device, valid_action_mask
 from deep.networks import QNetwork, count_parameters
 from deep.replay_buffer import ReplayBuffer
 from env.vacuum_env import VacuumEnv
@@ -119,6 +119,31 @@ def test_load_on_cpu(tmp_path: Path) -> None:
     agent = DQNAgent((3, 3, 3), DQNConfig(device="auto"))
     loaded = DQNAgent.load(agent.save(tmp_path / "m.pt"), device="cpu")
     assert next(loaded.online.parameters()).device.type == "cpu"
+
+
+def test_valid_action_mask_matches_env() -> None:
+    from env.grid_utils import valid_actions
+
+    env = VacuumEnv("furniture_8x8")
+    for seed in range(30):
+        obs, _ = env.reset(seed=seed)
+        mask = valid_action_mask(torch.as_tensor(obs).unsqueeze(0))[0]
+        assert np.flatnonzero(mask.numpy()).tolist() == valid_actions(obs)
+
+
+def test_masked_targets_ignore_blocked_actions() -> None:
+    obs = torch.zeros(1, 3, 2, 2)
+    obs[0, 0, 0, 0] = 1.0  # robot ở góc trên-trái: chỉ đi xuống (1) hoặc phải (3) được
+    batch = {"next_obs": obs, "rewards": torch.zeros(1), "terminated": torch.zeros(1)}
+    net = _ConstNet([100.0, 1.0, 100.0, 2.0])  # hành động bị chặn có Q rất lớn
+    assert compute_targets(batch, net, 1.0)[0].item() == pytest.approx(100.0)
+    assert compute_targets(batch, net, 1.0, action_mask=True)[0].item() == pytest.approx(2.0)
+
+
+def test_masked_agent_never_collides() -> None:
+    agent = DQNAgent((3, 8, 8), DQNConfig(action_mask=True, seed=1))
+    result = run_episode(agent, VacuumEnv("furniture_8x8"), seed=0)
+    assert result["collisions"] == 0
 
 
 def test_config_validation() -> None:

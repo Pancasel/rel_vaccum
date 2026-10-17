@@ -1,2 +1,58 @@
 
 [1/5] e2_reward: -m experiments.run_ablation --exp reward --map obstacle_4x4 --workers 3
+| variant | n | success_rate | coverage_mean | coverage_std | steps_mean | steps_std | redundancy_mean |
+|---|---|---|---|---|---|---|---|
+| sparse | 5 | 1.00 | 1.00 | 0.00 | 13.00 | 0.00 | 0.08 |
+| dense | 5 | 1.00 | 1.00 | 0.00 | 13.00 | 0.00 | 0.08 |
+| shaped | 5 | 1.00 | 1.00 | 0.00 | 13.00 | 0.00 | 0.08 |
+| hackable | 5 | 0.00 | 0.92 | 0.00 | 52.00 | 0.00 | 0.79 |
+
+- hackable_gif: {'steps': 52, 'coverage': 0.9230769230769231, 'return_undiscounted': 22.5, 'terminated': False, 'truncated': True, 'frames': 53}
+- hackable_back_and_forth_moves: 37
+- shaping_theory_check: {'n_states': 4676, 'n_policy_differs': 0}
+[1/5] e2_reward: xong sau 368 s
+
+[2/5] deep_3x3: -m experiments.run_deep --map empty_3x3 --start 0 0 --timesteps 30000 --workers 3 --device cpu
+| n_seeds | coverage_mean_avg | coverage_mean_sd | success_rate_avg | success_rate_sd | steps_mean_avg | steps_mean_sd | steps_to_full_mean_avg | steps_to_full_mean_sd | redundancy_mean_avg | redundancy_mean_sd | collisions_mean_avg | collisions_mean_sd | gap_pct_avg | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 5 | 1.00 | 0.00 | 1.00 | 0.00 | 8.00 | 0.00 | 8.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+Tham chiếu số bước: {'tối ưu (VI)': 8.0, 'greedy_bfs': 8.0, 'zigzag': 8.0}
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\deep\figures\deep_learning_curve_empty_3x3_s00.png
+[2/5] deep_3x3: xong sau 96 s
+
+[3/5] deep_4x4: -m experiments.run_deep --map obstacle_4x4 --timesteps 200000 --workers 3 --device cpu
+| n_seeds | coverage_mean_avg | coverage_mean_sd | success_rate_avg | success_rate_sd | steps_mean_avg | steps_mean_sd | steps_to_full_mean_avg | steps_to_full_mean_sd | redundancy_mean_avg | redundancy_mean_sd | collisions_mean_avg | collisions_mean_sd | gap_pct_avg | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 5 | 1.00 | 0.00 | 1.00 | 0.00 | 12.72 | 0.09 | 12.72 | 0.09 | 0.06 | 0.01 | 0.00 | 0.00 | 0.00 | 0.00 |
+Tham chiếu số bước: {'tối ưu (VI)': 12.69, 'greedy_bfs': 15.92, 'zigzag': 16.31}
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\deep\figures\deep_learning_curve_obstacle_4x4.png
+[3/5] deep_4x4: xong sau 700 s
+
+[4/5] e4_generalization: -m experiments.run_generalization --exp generalization --timesteps 200000 --workers 3 --device cpu
+| K | split | n_seeds | coverage_mean | success_rate | steps_mean | steps_to_full_mean | redundancy_mean | coverage_mean_sd | success_rate_sd | steps_mean_sd | steps_to_full_mean_sd | redundancy_mean_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | test (chưa gặp) | 3 | 0.20 | 0.00 | 124.00 | nan | 0.16 | 0.01 | 0.00 | 0.00 | 0.00 | 0.09 |
+| 1 | train (đã gặp) | 3 | 1.00 | 1.00 | 34.00 | 34.00 | 0.12 | 0.00 | 0.00 | 0.87 | 0.87 | 0.02 |
+| 10 | test (chưa gặp) | 3 | 0.35 | 0.02 | 122.03 | 39.75 | 0.27 | 0.02 | 0.02 | 1.76 | 0.35 | 0.05 |
+| 10 | train (đã gặp) | 3 | 0.91 | 0.60 | 74.10 | 40.79 | 0.42 | 0.01 | 0.17 | 14.46 | 3.15 | 0.15 |
+| 100 | test (chưa gặp) | 3 | 0.35 | 0.00 | 124.00 | nan | 0.68 | 0.02 | 0.00 | 0.00 | 0.00 | 0.02 |
+| 100 | train (đã gặp) | 3 | 0.40 | 0.00 | 124.00 | nan | 0.76 | 0.04 | 0.00 | 0.00 | 0.00 | 0.05 |
+| ∞ | test (chưa gặp) | 3 | 0.35 | 0.00 | 124.00 | nan | 0.66 | 0.15 | 0.00 | 0.00 | 0.00 | 0.07 |
+[4/5] e4_generalization: xong sau 2118 s
+
+[5/5] e6_optimality: -m experiments.run_optimality --workers 3 --device cpu
+# E6: khoảng cách tới tối ưu (số bước, trung bình ± std qua 5 seed, gap so với tối thiểu)
+
+| map | start | min_steps | VI | Q-learning | DQN | greedy_bfs | zigzag |
+|---|---|---|---|---|---|---|---|
+| empty_3x3 | (0, 0) | 8 | 8.0 (+0%) | 8.0 (+0%) | 8.0 (+0%) | 8.0 (+0%) | 8.0 (+0%) |
+| empty_3x3 | (0, 1) | 9 | 9.0 (+0%) | 9.0 (+0%) | 9.0 (+0%) | 9.0 (+0%) | 9.0 (+0%) |
+| empty_3x3 | (1, 1) | 8 | 8.0 (+0%) | 8.0 (+0%) | 8.0 (+0%) | 8.0 (+0%) | 10.0 (+25%) |
+| obstacle_4x4 | (0, 0) | 13 | 13.0 (+0%) | 13.0 (+0%) | 13.0 (+0%) | 16.0 (+23%) | 16.0 (+23%) |
+| obstacle_4x4 | (0, 3) | 13 | 13.0 (+0%) | 13.0 (+0%) | 13.0 (+0%) | 13.0 (+0%) | 19.0 (+46%) |
+| obstacle_4x4 | (1, 2) | 13 | 13.0 (+0%) | 13.0 (+0%) | 13.0 (+0%) | 17.0 (+31%) | 19.0 (+46%) |
+| obstacle_4x4 | (2, 0) | 12 | 12.0 (+0%) | 12.0 (+0%) | 12.0 (+0%) | 17.0 (+42%) | 12.0 (+0%) |
+| obstacle_4x4 | (3, 3) | 12 | 12.0 (+0%) | 12.0 (+0%) | 12.0 (+0%) | 15.0 (+25%) | 18.0 (+50%) |
+[5/5] e6_optimality: xong sau 1406 s
+
+Tất cả các bước đã chạy xong.

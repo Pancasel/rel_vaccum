@@ -1,0 +1,51 @@
+{
+  "config": {
+    "args": {
+      "exp": "reward",
+      "map": "obstacle_4x4",
+      "episodes": 20000,
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "out": "results/ablation",
+      "quick": false,
+      "workers": 3
+    },
+    "episodes": 20000,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "start": [
+      0,
+      0
+    ],
+    "hackable_gif": {
+      "steps": 52,
+      "coverage": 0.9230769230769231,
+      "return_undiscounted": 22.5,
+      "terminated": false,
+      "truncated": true,
+      "frames": 53
+    },
+    "hackable_back_and_forth_moves": 37,
+    "shaping_theory_check": {
+      "n_states": 4676,
+      "n_policy_differs": 0
+    }
+  },
+  "meta": {
+    "timestamp": "2026-10-17T12:04:06",
+    "git_commit": "19e8c9900b22831854d6e327a7bdf5db4d4c8f34",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cu130"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "config": {
+    "args": {
+      "map": "empty_3x3",
+      "random_maps": null,
+      "n_train_maps": 0,
+      "start": [
+        "0",
+        "0"
+      ],
+      "hide_cleaned": false,
+      "reward": "dense",
+      "timesteps": 30000,
+      "learning_rate": 0.00025,
+      "target_update": 500,
+      "buffer_size": 100000,
+      "eval_every": null,
+      "eval_episodes": 20,
+      "device": "cpu",
+      "checkpoints": null,
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "out": "results/deep",
+      "quick": false,
+      "workers": 3
+    },
+    "spec": {
+      "reward": "dense",
+      "hide": false,
+      "start": [
+        0,
+        0
+      ],
+      "map": "empty_3x3",
+      "random": null
+    },
+    "n_test_maps": 0,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "timesteps": 30000
+  },
+  "meta": {
+    "timestamp": "2026-10-17T12:05:44",
+    "git_commit": "19e8c9900b22831854d6e327a7bdf5db4d4c8f34",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cu130"
+  }
+}

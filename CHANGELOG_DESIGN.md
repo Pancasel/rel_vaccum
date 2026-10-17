@@ -48,3 +48,10 @@ Nhật ký thay đổi thiết kế so với `PLAN_rel.md` / `IMPLEMENTATION_PLA
 - Reason: máy có RTX 4050 Laptop 6 GB; lần cài đầu dùng bản CPU theo hướng dẫn trong kế hoạch mà không kiểm tra GPU (lỗi của agent).
 - Evidence/result (đo trên furniture_8x8, 12k bước): 1 tiến trình — CPU 1 luồng 2.65 ms/bước, CPU 4 luồng 1.96, GPU 1.92. Sáu tiến trình song song — CPU 4.0 ms/bước mỗi tiến trình, GPU 3.7. Mạng nhỏ nên thời gian chủ yếu nằm ở chạy môi trường và gọi hàm Python mỗi bước, GPU chỉ nhanh hơn ~10–40%. Cách dùng tốt nhất: chia thí nghiệm cho cả GPU và CPU chạy đồng thời.
 - Proposed B8 row: | — | 2026-10-17 | Huấn luyện DQN trên GPU (auto) | Máy có RTX 4050 | Nhanh hơn ~10–40% mỗi tiến trình; chạy song song GPU + CPU để tăng thông lượng |
+
+## 2026-10-17 — Cải tiến v3: action masking cho DQN
+
+- Change: `DQNConfig.action_mask` (mặc định tắt) và cờ `--action-mask` trong run_deep: không chọn hướng đâm vào tường/vật cản khi hành động (kể cả khám phá ngẫu nhiên) và khi lấy max trong mục tiêu Q. Mô hình phòng ngẫu nhiên dùng cho demo chuyển sang bản có mask.
+- Reason: DQN huấn luyện trên phòng ngẫu nhiên 8x8 (500k bước, 5 seed) chỉ dọn 14% phòng chưa gặp; log cho thấy ~101/216 bước là va chạm — chính sách tham lam tất định đâm tường mãi khi ước lượng sai ở phòng lạ (trạng thái không đổi -> hành động không đổi). Đường cong đi ngang suốt 500k bước nên không phải do thiếu bước huấn luyện. Va chạm không bao giờ có ích, nên che đi không làm mất chính sách tối ưu.
+- Evidence/result: A/B trên phòng ngẫu nhiên 6x6 (150k bước, 2 seed, results/mask_ab/): không mask 31% đã dọn, 0% dọn xong, 36 va chạm/episode; có mask 69% đã dọn, 7% dọn xong, 0 va chạm. Vẫn kém greedy BFS (100%) — robot còn lặp qua lại giữa các ô đã dọn.
+- Proposed B8 row: | v3 | 2026-10-17 | Action masking cho DQN | DQN đâm tường mãi ở phòng chưa gặp | Phòng lạ 6x6: 31% -> 69% đã dọn; vẫn kém greedy BFS |

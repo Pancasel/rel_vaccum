@@ -64,6 +64,8 @@ def env_tag(spec: dict[str, Any]) -> str:
         tag += "_hide"
     if spec["reward"] != "dense":
         tag += f"_{spec['reward']}"
+    if spec.get("action_mask"):
+        tag += "_mask"
     return tag
 
 
@@ -137,6 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--eval-every", type=int, default=None, help="mặc định: timesteps/40")
     parser.add_argument("--eval-episodes", type=int, default=20)
     parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
+    parser.add_argument("--action-mask", action="store_true", help="cải tiến v3: không chọn hướng đâm vào tường")
     parser.add_argument("--checkpoints", type=int, nargs="*", default=None,
                         help="các bước lưu mô hình (mặc định 0, 1/4 và toàn bộ số bước)")
     add_common_args(parser, "results/deep")
@@ -145,7 +148,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_spec(args: argparse.Namespace) -> tuple[dict[str, Any], list[np.ndarray] | None]:
     """Spec môi trường + tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên)."""
-    spec: dict[str, Any] = {"reward": args.reward, "hide": args.hide_cleaned, "start": None}
+    spec: dict[str, Any] = {"reward": args.reward, "hide": args.hide_cleaned, "start": None,
+                            "action_mask": args.action_mask}
     if args.random_maps:
         h, w, density = int(args.random_maps[0]), int(args.random_maps[1]), float(args.random_maps[2])
         n_test = 5 if args.quick else N_TEST_MAPS
@@ -174,7 +178,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                         learning_starts=min(DQNConfig.learning_starts, timesteps // 5),
                         eval_every_steps=eval_every, eval_episodes=2 if args.quick else args.eval_episodes,
                         log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)),
-                        checkpoint_steps=tuple(checkpoints), device=args.device, seed=seed)
+                        checkpoint_steps=tuple(checkpoints), device=args.device, action_mask=args.action_mask,
+                        seed=seed)
         tasks.append({"spec": spec, "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / f"seed{seed}"),
                       "test_maps": test_maps})
     results = run_parallel(train_one, tasks, workers=args.workers)
