@@ -66,3 +66,39 @@ Nhật ký thay đổi thiết kế so với `PLAN_rel.md` / `IMPLEMENTATION_PLA
 - Reason: v3 (chỉ mask) chỉ dọn 37% phòng chưa gặp (8x8, 5 seed); mạng phải học lại cùng một quy tắc ở mọi vị trí. Đường cong v4 còn dao động giữa các lần đánh giá, cần chọn mô hình ổn định.
 - Evidence/result: A/B trên phòng ngẫu nhiên 8x8, 600k bước, 2 seed (results/v4_ab/): mask 60% đã dọn / 1% dọn xong; mask + egocentric 91% / 42%; mask + shaping (hệ số 2) 59% / 0%; mask + egocentric + shaping 89% / 33%. Chọn mask + egocentric (shaping không giúp thêm).
 - Proposed B8 row: | v4 | 2026-10-17 | Quan sát lấy robot làm tâm + huấn luyện song song + chọn mô hình theo tập kiểm định | DQN không khái quát sang phòng lạ (37%) | A/B 8x8: 60% -> 91% đã dọn, 1% -> 42% dọn xong |
+
+## 2026-10-17 — Kết quả cuối của DQN (v4, 2 triệu bước, 5 seed)
+
+- Change: không đổi code; huấn luyện cấu hình cuối `run_deep --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --eval-every 50000 --eval-episodes 50`, seed 0–4 (results/deep/dqn/rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16/, hình results/deep/figures/deep_learning_curve_rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16.png).
+- Reason: ở 600k bước (A/B v4) đường cong chưa bão hòa; cần số liệu ≥ 5 seed cho báo cáo.
+- Evidence/result (50 phòng 8x8 chưa gặp, mật độ 0.15, trung bình ± std qua 5 seed):
+
+  | Agent | Đã dọn | Dọn xong | Số bước | Va chạm |
+  |---|---|---|---|---|
+  | DQN v1 (gốc, 500k) | 13.9% ± 1.3 | 0% | 216 (hết giờ) | 88.7 |
+  | DQN v3 (+ mask, 500k) | 36.7% ± 4.9 | 0% | 216 | 0 |
+  | **DQN v4 (+ egocentric, 2M)** | **97.6% ± 1.3** | **80% ± 9.5** | **98.4 ± 14.7** | **0** |
+  | random walk | 75.4% | 0% | 216 | — |
+  | zigzag | 100% | 100% | 80.8 | — |
+  | greedy BFS | 100% | 100% | 71.4 | — |
+
+  - Đánh giá định kỳ (trung bình 5 seed): 1M bước 92% đã dọn / 52% dọn xong / 144 bước; 2M bước 95% / 76% / 104 bước. Phần "đã dọn" bão hòa sớm, phần "dọn xong" (quay lại ô sót ở xa) cần huấn luyện lâu.
+  - Ở các episode dọn xong, DQN dùng 69.0 ± 1.5 bước; con số này chỉ tính trên phòng dọn xong (thường dễ hơn) nên không so trực tiếp với 71.4 của greedy BFS.
+  - DQN vẫn thua baseline có bản đồ đầy đủ (20% phòng còn sót ô, trung bình nhiều bước hơn), nhưng tiến từ 14% lên 98% đã dọn chỉ bằng biểu diễn quan sát và che hành động.
+- Proposed B8 row: | v4 | 2026-10-17 | Huấn luyện cấu hình cuối 2M bước, 5 seed | Đường cong 600k chưa bão hòa | Phòng lạ 8x8: 97.6% đã dọn, 80% dọn xong, 0 va chạm; zigzag/greedy 100% |
+
+## 2026-10-17 — E4 (khái quát hóa) chạy lại với DQN bản cuối
+
+- Change: không đổi code; `run_generalization --exp generalization --timesteps 2000000 --seeds 0 1 2 --workers 4 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best` (results/generalization/generalization/*_mask_ego_ne16_bs256_tf16*).
+- Reason: E4 cũ dùng DQN v1 (300k bước), mâu thuẫn với kết quả cuối của DQN v4.
+- Evidence/result (phòng 6x6, mật độ 0.15, 3 seed; tỷ lệ đã dọn / dọn xong / số bước):
+
+  | K phòng train | Cũ (v1): test chưa gặp | Mới (v4): train đã gặp | Mới (v4): test chưa gặp |
+  |---|---|---|---|
+  | 1 | 20% / 0% / 124 | 100% / 100% / 32.7 | 61% / 9% / 115.8 |
+  | 10 | 35% / 2% / 122 | 100% / 100% / 32.9 | 97% / 83% / 49.5 |
+  | 100 | 35% / 0% / 124 | 100% / 98% / 35.8 | 99% / 95% / 38.5 |
+  | ∞ | 35% / 0% / 124 | — | 100% / 99% / 34.4 |
+
+  Giả thuyết E4 được xác nhận rõ: train trên 1 phòng thì thuộc lòng phòng đó (100% train, 61% test); càng nhiều phòng khác nhau thì khoảng cách train–test càng nhỏ, với K = ∞ gần như dọn hết mọi phòng lạ.
+- Proposed B8 row: | v4 | 2026-10-17 | E4 với DQN v4 | E4 cũ dùng DQN v1 | K=1: 61% test; K=∞: 100% test, 99% dọn xong |

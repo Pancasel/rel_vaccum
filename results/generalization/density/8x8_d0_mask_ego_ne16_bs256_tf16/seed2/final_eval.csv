@@ -1,0 +1,2 @@
+map_id,episode,env_seed,start_row,start_col,return_undiscounted,return_discounted,coverage,steps,steps_to_full,redundancy,collisions,n_revisit,terminated,truncated
+0,0,20020000,6,4,72.26000000000003,51.64211293954582,1.0,64,64.0,0.015625,0,1,True,False

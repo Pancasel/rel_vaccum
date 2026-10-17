@@ -167,3 +167,30 @@ def test_time_budget_stops_early() -> None:
     agent = QLearningAgent(get_map("empty_3x3"), TabularConfig(n_episodes=10_000_000, time_budget_min=0.01))
     train, evals = agent.train(factory)
     assert len(train) < 10_000_000 and len(evals) >= 1
+
+
+@pytest.mark.parametrize("algo", ["sarsa", "double_q"])
+def test_other_algos_learn_3x3_and_reload(algo: str, tmp_path: Path) -> None:
+    """E5: SARSA và Double Q học được phòng 3x3 và đọc lại đúng lớp."""
+    import tabular.double_q  # noqa: F401  (đăng ký lớp vào registry)
+    import tabular.sarsa  # noqa: F401
+
+    factory = functools.partial(VacuumEnv, "empty_3x3", start=(0, 0))
+    agent = TabularAgent.registry[algo](get_map("empty_3x3"), TabularConfig(n_episodes=3000, seed=0))
+    agent.train(factory)
+    assert run_episode(agent, factory(), seed=0)["coverage"] == 1.0
+    loaded = TabularAgent.load(agent.save(tmp_path / "q.pkl"))
+    assert type(loaded) is type(agent)
+    for key in list(agent.q)[:50]:
+        assert loaded.greedy_action(key) == agent.greedy_action(key)
+
+
+def test_double_q_average_table() -> None:
+    """self.q của Double Q luôn bằng trung bình hai bảng."""
+    from tabular.double_q import DoubleQLearningAgent
+
+    agent = DoubleQLearningAgent(get_map("empty_3x3"), TabularConfig(n_episodes=50, seed=0))
+    agent.train(functools.partial(VacuumEnv, "empty_3x3", start=(0, 0)))
+    q1, q2 = agent.q_tables
+    for key, row in agent.q.items():
+        np.testing.assert_allclose(row, (q1[key] + q2[key]) / 2)

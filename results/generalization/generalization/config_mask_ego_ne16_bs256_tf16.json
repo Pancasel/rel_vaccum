@@ -1,0 +1,54 @@
+{
+  "config": {
+    "args": {
+      "exp": "generalization",
+      "size": null,
+      "densities": [
+        0.0,
+        0.1,
+        0.2,
+        0.3
+      ],
+      "density": 0.15,
+      "k_values": [
+        1,
+        10,
+        100,
+        0
+      ],
+      "n_test_maps": null,
+      "timesteps": 2000000,
+      "device": "cuda",
+      "action_mask": true,
+      "egocentric": true,
+      "reward": "dense",
+      "shaping_coef": null,
+      "n_envs": 16,
+      "batch_size": 256,
+      "keep_best": true,
+      "train_freq": 16,
+      "tag": "_mask_ego_ne16_bs256_tf16",
+      "seeds": [
+        0,
+        1,
+        2
+      ],
+      "out": "results/generalization",
+      "quick": false,
+      "workers": 4
+    },
+    "seeds": [
+      0,
+      1,
+      2
+    ],
+    "timesteps": 2000000
+  },
+  "meta": {
+    "timestamp": "2026-10-17T20:30:07",
+    "git_commit": "5560c41dc5ee005830c3e5fd50c93d7196d7d86e",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cu130"
+  }
+}

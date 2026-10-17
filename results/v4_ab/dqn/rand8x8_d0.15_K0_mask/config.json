@@ -1,0 +1,66 @@
+{
+  "config": {
+    "args": {
+      "map": null,
+      "random_maps": [
+        "8",
+        "8",
+        "0.15"
+      ],
+      "n_train_maps": 0,
+      "start": [
+        "random"
+      ],
+      "hide_cleaned": false,
+      "reward": "dense",
+      "timesteps": 600000,
+      "learning_rate": 0.00025,
+      "target_update": 500,
+      "buffer_size": 100000,
+      "eval_every": null,
+      "eval_episodes": 20,
+      "device": "cuda",
+      "action_mask": true,
+      "egocentric": false,
+      "shaping_coef": null,
+      "n_envs": 16,
+      "batch_size": 256,
+      "train_freq": 16,
+      "checkpoints": null,
+      "seeds": [
+        0,
+        1
+      ],
+      "out": "results/v4_ab",
+      "quick": false,
+      "workers": 1
+    },
+    "spec": {
+      "reward": "dense",
+      "hide": false,
+      "start": null,
+      "action_mask": true,
+      "egocentric": false,
+      "shaping_coef": null,
+      "map": null,
+      "random": [
+        8,
+        8,
+        0.15
+      ]
+    },
+    "n_test_maps": 50,
+    "seeds": [
+      0,
+      1
+    ],
+    "timesteps": 600000
+  },
+  "meta": {
+    "timestamp": "2026-10-17T15:56:30",
+    "git_commit": "af799e4f1dc725a8aace672a7608646a8b09d328",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cu130"
+  }
+}

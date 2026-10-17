@@ -8,7 +8,26 @@ phòng chưa từng thấy). Kế hoạch: [PLAN_rel.md](PLAN_rel.md) (cái gì,
 ![Cuộc đua các robot trên phòng 8x8](results/demo/compare_furniture_8x8.gif)
 
 <!-- RESULTS_START -->
-(Kết quả được điền sau khi chạy `python -m experiments.reproduce_all --full`.)
+**Báo cáo đầy đủ (tiếng Việt):** mở [BAO_CAO_DU_AN.html](BAO_CAO_DU_AN.html) trong trình duyệt.
+
+## Kết quả chính
+
+Mọi số liệu: trung bình ± độ lệch chuẩn qua 5 seed (E3, E4: 3 seed), đo bằng chính sách tham lam.
+
+| Thí nghiệm | Kết quả |
+|---|---|
+| Q-learning, phòng 3×3 và 4×4 (xuất phát cố định) | đúng số bước tối ưu ở mọi ô xuất phát (gap 0%); max Q(s0) hội tụ về đúng V* của Value Iteration |
+| DQN, phòng 3×3 / 4×4 (xuất phát ngẫu nhiên) | 8,0 ± 0 / 12,72 ± 0,09 bước (tối ưu 8 / 12,69) |
+| DQN, phòng 8×8 có đồ đạc | **51,9 ± 0,7 bước**, dọn xong 100% (greedy BFS 58,9; zigzag 80,0; cận dưới 51) |
+| **DQN v4, 50 phòng 8×8 chưa từng thấy** | **98% ± 1% diện tích, dọn xong 80% ± 9%, 69,0 ± 1,5 bước khi xong** (greedy BFS 71,4; zigzag 80,8) |
+| DQN v4, 50 phòng 6×6 chưa từng thấy (E4, huấn luyện vô hạn phòng) | 100% diện tích, dọn xong 99%, 33,8 bước (greedy BFS 38,8; zigzag 44,2) |
+| E1: state thiếu bản đồ đã dọn | 0% dọn xong, 45% ± 22% diện tích (đủ thông tin: 100%, tối ưu) |
+| E2: reward "hackable" | reward hacking ở cả 5 seed (dọn 92% rồi đi qua đi lại); shaping thế năng: 0/4.676 trạng thái đổi chính sách tối ưu |
+| E3: phòng lạ 8×8 theo mật độ 0 / 10 / 20 / 30% | dọn xong 100 / 87 / 61 / 34%; phòng trống 63,7 bước (greedy 67,2) |
+| E7: số trạng thái | 4×5: 1,4 triệu trạng thái đạt tới; 8×8: cận trên ~10²¹ |
+
+Quá trình cải tiến DQN trên phòng lạ 8×8 (chi tiết trong `CHANGELOG_DESIGN.md`):
+v2 14% diện tích → v3 (action masking) 37% → **v4 (quan sát lấy robot làm tâm + 16 môi trường song song + chọn mô hình theo tập kiểm định) 98%, dọn xong 80%**.
 <!-- RESULTS_END -->
 
 ## 1. Bài toán
@@ -92,9 +111,9 @@ Hoặc từng thí nghiệm:
 | E1 tính Markov | `python -m experiments.run_ablation --exp markov --workers 5` | `results/ablation/figures/e1_markov_obstacle_4x4.png`, GIF | ~3 phút |
 | E2 thiết kế reward | `python -m experiments.run_ablation --exp reward --workers 5` | `results/ablation/figures/e2_reward_curves_obstacle_4x4.png`, GIF reward hacking | ~5 phút |
 | DQN 3 bậc | `python -m experiments.run_deep --map obstacle_4x4 --timesteps 200000 --workers 5` (và `empty_3x3`, `furniture_8x8`) | `results/deep/dqn/*/summary.csv`, `results/deep/figures/` | 10–60 phút |
-| DQN phòng ngẫu nhiên | `python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 500000 --workers 5` | `results/deep/dqn/rand8x8_d0.15_K0/` | ~1 giờ |
-| E3 mật độ vật cản | `python -m experiments.run_generalization --exp density --timesteps 300000 --workers 2` | `results/generalization/figures/e3_density_8x8.png` | ~2 giờ |
-| E4 khái quát hóa | `python -m experiments.run_generalization --exp generalization --timesteps 200000 --workers 3` | `results/generalization/figures/e4_generalization_6x6.png` | ~1 giờ |
+| DQN v4 phòng ngẫu nhiên | `python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --eval-every 50000 --eval-episodes 50 --workers 3` | `results/deep/dqn/rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16/` | ~1 giờ (GPU) |
+| E3 mật độ vật cản (v4) | `python -m experiments.run_generalization --exp density --size 8 8 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --workers 4` | `results/generalization/figures/e3_density_8x8_mask_ego_ne16_bs256_tf16.png` | ~1,7 giờ (GPU) |
+| E4 khái quát hóa (v4) | `python -m experiments.run_generalization --exp generalization --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --workers 4` | `results/generalization/figures/e4_generalization_6x6_mask_ego_ne16_bs256_tf16.png` | ~1,5 giờ (GPU) |
 | E6 khoảng cách tối ưu | `python -m experiments.run_optimality --workers 5` | `results/optimality/e6_optimality_gap.md` | ~30 phút |
 | Demo | `python -m experiments.make_demo` | `results/demo/*.gif`, `demo_summary.md` | ~1 phút |
 
@@ -136,9 +155,11 @@ utils/        đường dẫn, seed, ghi file
 - Mô phỏng đơn giản hóa: robot đi từng ô, chuyển động tất định, không trượt bánh, không cảm biến nhiễu,
   không SLAM, vật cản tĩnh, một robot. Kết quả chưa chuyển trực tiếp sang robot thật (sim-to-real).
 - Q-learning dạng bảng chỉ dùng cho một căn phòng và một điểm xuất phát cố định; bảng Q tăng theo hàm mũ.
-- DQN tham lam tất định có thể lặp vòng tới hết số bước trên phòng khó; chúng tôi báo cáo cả các trường
-  hợp đó, không chọn seed tốt nhất.
-- Huấn luyện trên CPU nên số bước huấn luyện DQN bị giới hạn (≤ 500k bước).
+- DQN tham lam tất định có thể lặp vòng tới hết số bước trên phòng khó: trên phòng lạ 8×8, 20% số lần
+  chưa dọn xong; ở mật độ vật cản 30% chỉ dọn xong 34% (greedy BFS luôn dọn xong). Chúng tôi báo cáo cả
+  các trường hợp đó, không chọn seed tốt nhất.
+- Huấn luyện trên laptop (RTX 4050) nên DQN dừng ở 2 triệu bước; đường cong học vẫn còn đi lên.
+- Mỗi mô hình DQN dùng cho một kích thước lưới cố định.
 
 ## 9. Cách nhóm dùng công cụ AI
 

@@ -1,0 +1,25 @@
+
+[1/3] tabular_3x3: -m experiments.run_tabular --map empty_3x3 --start 0 0 --episodes 5000 --workers 3
+| algo | n_seeds | coverage_mean_avg | steps_mean_avg | success_rate_avg | redundancy_mean_avg | gap_pct_avg | coverage_mean_sd | steps_mean_sd | success_rate_sd | redundancy_mean_sd | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| q_learning | 5 | 1.00 | 8.00 | 1.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\tabular_learning_curve_empty_3x3_s00.png
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\q_convergence_empty_3x3_s00.png
+[1/3] tabular_3x3: xong sau 21 s
+
+[2/3] tabular_4x4: -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --episodes 50000 --workers 3
+| algo | n_seeds | coverage_mean_avg | steps_mean_avg | success_rate_avg | redundancy_mean_avg | gap_pct_avg | coverage_mean_sd | steps_mean_sd | success_rate_sd | redundancy_mean_sd | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| q_learning | 5 | 1.00 | 13.00 | 1.00 | 0.08 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\tabular_learning_curve_obstacle_4x4_s00.png
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\q_convergence_obstacle_4x4_s00.png
+[2/3] tabular_4x4: xong sau 199 s
+
+[3/3] tabular_4x4_random_start: -m experiments.run_tabular --map obstacle_4x4 --start random --episodes 50000 --workers 3
+| algo | n_seeds | coverage_mean_avg | steps_mean_avg | success_rate_avg | redundancy_mean_avg | gap_pct_avg | coverage_mean_sd | steps_mean_sd | success_rate_sd | redundancy_mean_sd | gap_pct_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| q_learning | 5 | 1.00 | 12.72 | 1.00 | 0.06 | 0.10 | 0.00 | 0.08 | 0.00 | 0.01 | 0.22 |
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\tabular\figures\tabular_learning_curve_obstacle_4x4.png
+[3/3] tabular_4x4_random_start: xong sau 196 s
+
+Tất cả các bước đã chạy xong.

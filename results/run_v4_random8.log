@@ -1,0 +1,5 @@
+| n_seeds | coverage_mean_avg | coverage_mean_sd | success_rate_avg | success_rate_sd | steps_mean_avg | steps_mean_sd | steps_to_full_mean_avg | steps_to_full_mean_sd | redundancy_mean_avg | redundancy_mean_sd | collisions_mean_avg | collisions_mean_sd |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 5 | 0.98 | 0.01 | 0.80 | 0.09 | 98.35 | 14.74 | 69.03 | 1.46 | 0.34 | 0.06 | 0.00 | 0.00 |
+Tham chiếu số bước: {'greedy_bfs': 71.38, 'zigzag': 80.78}
+Hình: D:\DoQuocAn\ki8\REL\project_vaccum\results\deep\figures\deep_learning_curve_rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16.png

@@ -1,0 +1,627 @@
+<meta charset="utf-8">
+<title>Robot hút bụi học tăng cường</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Lora:ital,wght@0,600;0,700;1,500&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: báo cáo kỹ thuật dài, mục lục dính bên trái trên màn rộng; màu lấy từ chính mô phỏng
+   (ô đã dọn xanh nhạt, robot đỏ, vật cản xám than) để người đọc nhận ra ngay các hình minh họa. */
+:root {
+  --bg: #f6f8fa;
+  --paper: #ffffff;
+  --ink: #1d2733;
+  --muted: #5b6878;
+  --line: #dde3ea;
+  --cleaned: #a0d2ff;
+  --cleaned-soft: #e8f3ff;
+  --robot: #c8322f;
+  --obstacle: #3c3c3c;
+  --accent: #1f6fb2;
+  --good: #2e7d4f;
+  --warn: #b36b00;
+  --bad: #b3261e;
+  --code-bg: #eef2f6;
+  --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Lora", Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --paper: #171e26; --ink: #e3e9f0; --muted: #9aa7b6; --line: #2b3541;
+    --cleaned: #4f8fc4; --cleaned-soft: #1b2b3b; --robot: #ff6b5e; --obstacle: #8a8f96;
+    --accent: #6fb3ee; --good: #6cc68f; --warn: #e2a23b; --bad: #ff7d72; --code-bg: #1f2833;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --paper: #171e26; --ink: #e3e9f0; --muted: #9aa7b6; --line: #2b3541;
+  --cleaned: #4f8fc4; --cleaned-soft: #1b2b3b; --robot: #ff6b5e; --obstacle: #8a8f96;
+  --accent: #6fb3ee; --good: #6cc68f; --warn: #e2a23b; --bad: #ff7d72; --code-bg: #1f2833;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.65;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 64px;
+}
+.shell { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 40px; }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); align-self: start; font-size: 14px; }
+nav.toc p { font-weight: 600; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+nav.toc ol { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+nav.toc a { color: var(--ink); text-decoration: none; display: block; padding: 3px 8px; border-left: 2px solid transparent; }
+nav.toc a:hover, nav.toc a:focus-visible { border-left-color: var(--accent); color: var(--accent); outline: none; }
+main { min-width: 0; }
+header.cover { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 28px 28px 22px; display: grid; gap: 14px; }
+.eyebrow { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+h1 { font-family: var(--font-display); font-size: clamp(28px, 4vw, 40px); line-height: 1.2; margin: 0; text-wrap: balance; }
+.lede { font-size: 18px; color: var(--muted); max-width: 68ch; margin: 0; }
+.cover-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 6px; }
+.stat { border-top: 3px solid var(--cleaned); padding-top: 8px; }
+.stat b { display: block; font-size: 24px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--muted); }
+section { margin-top: 44px; }
+h2 { font-family: var(--font-display); font-size: 27px; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; scroll-margin-top: 20px; }
+h2 .num { color: var(--robot); margin-right: 8px; }
+h3 { font-size: 18px; margin: 26px 0 8px; }
+p, li { max-width: 72ch; }
+a { color: var(--accent); }
+code, kbd { font-family: var(--font-mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { font-family: var(--font-mono); font-size: 13.5px; line-height: 1.55; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.table-wrap { overflow-x: auto; margin: 12px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; background: var(--cleaned-soft); }
+tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; }
+.best { color: var(--good); font-weight: 600; }
+.weak { color: var(--bad); font-weight: 600; }
+figure { margin: 18px 0; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+figure img { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: 4px; background: #fff; }
+figcaption { font-size: 13.5px; color: var(--muted); margin-top: 8px; }
+.note { border-left: 3px solid var(--warn); background: var(--paper); padding: 10px 14px; border-radius: 0 6px 6px 0; margin: 14px 0; }
+.note.good { border-left-color: var(--good); }
+.note.bad { border-left-color: var(--bad); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 14px; margin: 8px 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; }
+.chip i { width: 14px; height: 14px; border-radius: 3px; display: inline-block; border: 1px solid var(--line); }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.cols > * { min-width: 0; }
+.qa dt { font-weight: 600; margin-top: 14px; }
+.qa dd { margin: 4px 0 0; color: var(--ink); max-width: 72ch; }
+footer { margin-top: 56px; color: var(--muted); font-size: 13px; }
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  nav.toc { position: static; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  nav.toc ol { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+html { scroll-behavior: smooth; }
+</style>
+
+<div class="shell">
+<nav class="toc" aria-label="Mục lục">
+  <p>Mục lục</p>
+  <ol>
+    <li><a href="#tom-tat">1. Tóm tắt</a></li>
+    <li><a href="#ung-dung">2. Bài toán và ứng dụng</a></li>
+    <li><a href="#mdp">3. Định hình bài toán RL</a></li>
+    <li><a href="#moi-truong">4. Môi trường mô phỏng</a></li>
+    <li><a href="#phuong-phap">5. Các phương pháp</a></li>
+    <li><a href="#cong-nghe">6. Công nghệ và cấu trúc code</a></li>
+    <li><a href="#chay">7. Cài đặt và chạy</a></li>
+    <li><a href="#ket-qua">8. Kết quả thí nghiệm</a></li>
+    <li><a href="#cai-tien">9. Quá trình cải tiến</a></li>
+    <li><a href="#gioi-han">10. Giới hạn và hướng phát triển</a></li>
+    <li><a href="#van-dap">11. Chuẩn bị vấn đáp</a></li>
+    <li><a href="#tham-khao">12. Tài liệu tham khảo</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="cover">
+  <div class="eyebrow">REL301 · FA26 · Hình thức Applications</div>
+  <h1>Robot hút bụi tự học cách dọn kín căn phòng</h1>
+  <p class="lede">Báo cáo và hướng dẫn đầy đủ của dự án: robot hút bụi ảo học bằng Q-learning (phòng nhỏ) và Deep Q-learning (phòng lớn), được kiểm chứng với đáp án tối ưu của Value Iteration và so sánh với các cách làm không dùng học tăng cường.</p>
+  <div class="cover-grid">
+    <div class="stat"><b>0%</b><span>khoảng cách tới tối ưu của Q-learning và DQN trên phòng 3×3, 4×4</span></div>
+    <div class="stat"><b>51,9 bước</b><span>DQN dọn phòng 8×8 có đồ đạc (greedy BFS: 58,9; zigzag: 80,0)</span></div>
+    <div class="stat"><b>99%</b><span>phòng 6×6 chưa từng thấy được DQN v4 dọn xong, ít bước hơn greedy 13%</span></div>
+    <div class="stat"><b>196 test</b><span>tự động; mọi kết quả chính 3–5 seed, trung bình ± độ lệch chuẩn</span></div>
+  </div>
+</header>
+
+<section id="tom-tat">
+  <h2><span class="num">1</span>Tóm tắt</h2>
+  <p>Dự án dạy một robot hút bụi ảo tự tìm đường đi qua <em>mọi</em> ô trống của một căn phòng dạng lưới với số bước ít nhất. Robot không được lập trình sẵn cách đi: nó thử, được thưởng khi dọn ô mới, bị phạt khi đi lại hoặc đâm tường, rồi tự rút kinh nghiệm. Đó là học tăng cường (Reinforcement Learning, RL).</p>
+  <p>Dự án dùng hai mô hình học:</p>
+  <ul>
+    <li><b>Q-learning dạng bảng</b> (Sutton &amp; Barto 2018, mục 6.5): mô hình chính. Trên phòng 3×3 và 4×4, Q-learning đạt đúng số bước tối ưu ở mọi điểm xuất phát, và giá trị nó học được hội tụ về đúng giá trị tối ưu V* tính bằng Value Iteration.</li>
+    <li><b>DQN (Deep Q-learning)</b>: cùng thuật toán Q-learning nhưng thay bảng bằng một mạng nơ-ron tích chập nhỏ. DQN cần thiết vì phòng 8×8 có khoảng 10<sup>17</sup> trạng thái, không bảng nào chứa nổi. Trên phòng 8×8 có đồ đạc, DQN dọn trong 51,9 bước, tốt hơn thuật toán tham lam (58,9) và zigzag (80,0), sát mức tối thiểu lý thuyết 51 bước.</li>
+  </ul>
+  <p>Bài toán khó nhất là <b>dọn căn phòng chưa từng thấy</b>. Phiên bản DQN đầu tiên chỉ dọn được 14% phòng lạ 8×8. Qua ba vòng cải tiến có đo đạc (mục 9: action masking, quan sát lấy robot làm tâm, huấn luyện song song và chọn mô hình theo tập kiểm định), DQN v4 dọn được <b>98% diện tích</b> và <b>dọn xong 80%</b> số phòng lạ 8×8. Khi dọn xong, nó dùng ít bước hơn thuật toán tham lam (69,0 so với 71,4). Trên phòng lạ 6×6, DQN v4 dọn xong 99% số phòng với 33,8 bước, so với 38,8 của thuật toán tham lam. Điểm còn yếu là phòng nhiều vật cản (30%): DQN dọn xong 34% số phòng, trong khi thuật toán tham lam luôn dọn xong. Báo cáo ghi rõ điều này.</p>
+</section>
+
+<section id="ung-dung">
+  <h2><span class="num">2</span>Bài toán và ứng dụng thực tế</h2>
+  <p>Bài toán thuộc nhóm <b>Coverage Path Planning</b> (lập kế hoạch đường đi phủ kín): một thiết bị phải đi qua toàn bộ một vùng với quãng đường ngắn nhất. Các ứng dụng thực tế:</p>
+  <ul>
+    <li>Robot hút bụi, robot lau sàn trong nhà, văn phòng, bệnh viện.</li>
+    <li>Máy cắt cỏ tự động, máy nông nghiệp phun thuốc theo luống.</li>
+    <li>Drone chụp ảnh khảo sát, quét bản đồ một khu vực.</li>
+    <li>Robot kiểm tra bề mặt (thân tàu, tấm pin mặt trời), robot rà phá bom mìn.</li>
+  </ul>
+  <p><b>Vì sao bài toán khó.</b> Tìm đường đi qua mọi ô với số bước ít nhất gần với bài toán đường đi Hamilton, thuộc lớp NP-khó. Không có công thức nhanh cho phòng lớn, nên các robot rẻ tiền thường đi zigzag hoặc đi tới chỗ bẩn gần nhất, và cả hai cách đều lãng phí khi phòng có nhiều đồ đạc. Học tăng cường cho phép robot tự tìm chiến lược tốt hơn cho từng căn phòng.</p>
+</section>
+
+<section id="mdp">
+  <h2><span class="num">3</span>Định hình thành bài toán học tăng cường</h2>
+  <p>Mọi bài toán RL được mô tả bằng một <b>quá trình quyết định Markov</b> (MDP, Sutton &amp; Barto chương 3) gồm trạng thái, hành động, phần thưởng, xác suất chuyển và hệ số chiết khấu.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Thành phần</th><th>Trong dự án</th></tr></thead>
+    <tbody>
+      <tr><td>Agent</td><td>Robot hút bụi</td></tr>
+      <tr><td>Môi trường</td><td>Căn phòng dạng lưới H×W; ô 0 là sàn trống, ô 1 là tường hoặc đồ đạc</td></tr>
+      <tr><td>Trạng thái (state)</td><td>Vị trí robot + tập các ô đã dọn + bản đồ vật cản</td></tr>
+      <tr><td>Hành động (action)</td><td>0 = lên, 1 = xuống, 2 = trái, 3 = phải</td></tr>
+      <tr><td>Chuyển trạng thái</td><td>Tất định: đi một ô theo hướng đã chọn; đụng tường thì đứng yên</td></tr>
+      <tr><td>Kết thúc</td><td><code>terminated</code> khi dọn hết mọi ô trống; <code>truncated</code> khi quá 4·|F| bước (|F| = số ô trống), tương tự hết pin</td></tr>
+      <tr><td>Chiết khấu γ</td><td>0,99: phần thưởng ở xa vẫn quan trọng (cần nhìn trước cả chục bước để dọn hết), nhưng dọn sớm vẫn được ưu tiên hơn</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Phần thưởng (cấu hình "dense", phiên bản v1)</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Sự kiện</th><th class="num">Phần thưởng</th><th>Ý nghĩa</th></tr></thead>
+    <tbody>
+      <tr><td>Vào ô chưa dọn</td><td class="num">+1,0</td><td>khuyến khích dọn ô mới</td></tr>
+      <tr><td>Vào ô đã dọn</td><td class="num">−0,1</td><td>phạt đi lại lãng phí</td></tr>
+      <tr><td>Đụng tường hoặc đồ đạc</td><td class="num">−0,5</td><td>robot đứng yên, mất một bước</td></tr>
+      <tr><td>Mỗi bước thời gian</td><td class="num">−0,01</td><td>khuyến khích dọn nhanh</td></tr>
+      <tr><td>Dọn xong 100%</td><td class="num">+10,0</td><td>thưởng hoàn thành nhiệm vụ</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Ví dụ tính tay.</b> Phòng 3×3 trống, robot xuất phát ở góc. Đường rắn đi qua 8 ô mới trong 8 bước, mỗi bước được 1 − 0,01 = 0,99, bước cuối được thêm 10. Tổng phần thưởng là 8 × 0,99 + 10 = 17,92; có chiết khấu là 16,9689. Đây cũng chính là giá trị tối ưu V* mà Value Iteration tính ra và Q-learning học được. Dự án có test tự động kiểm tra đúng con số này.</p>
+  <h3>Vì sao trạng thái bắt buộc phải chứa "các ô đã dọn"</h3>
+  <p>Nếu trạng thái chỉ có vị trí robot, hai tình huống cùng vị trí nhưng tiến độ dọn khác nhau sẽ bị gộp làm một, trong khi phần thưởng tương lai của chúng khác hẳn nhau. Khi đó trạng thái mất <b>tính Markov</b>: tương lai không còn chỉ phụ thuộc vào trạng thái hiện tại. Thí nghiệm E1 (mục 8) chứng minh điều này bằng số liệu.</p>
+</section>
+
+<section id="moi-truong">
+  <h2><span class="num">4</span>Môi trường mô phỏng hoạt động thế nào</h2>
+  <p>Nhóm <b>tự viết môi trường bằng Python</b> (<code>env/vacuum_env.py</code>), không dùng phần mềm mô phỏng có sẵn. Lớp <code>VacuumEnv</code> theo chuẩn <b>Gymnasium</b>, chuẩn chung của các thư viện RL, và vượt qua bộ kiểm tra <code>check_env</code> của Gymnasium.</p>
+  <h3>4.1 Căn phòng là một ma trận số</h3>
+<pre><code>"........"        0 0 0 0 0 0 0 0
+".##....."        0 1 1 0 0 0 0 0      0 = sàn trống
+".##..##."   →    0 1 1 0 0 1 1 0      1 = đồ đạc / tường
+"........"        0 0 0 0 0 0 0 0</code></pre>
+  <p>Có 7 bản đồ cố định (3×3 đến 8×8, trong đó phòng 8×8 có bàn, tủ, chân ghế) và hàm <b>sinh phòng ngẫu nhiên</b> theo mật độ vật cản. Hàm này luôn kiểm tra để mọi ô trống đều tới được, nên căn phòng nào cũng dọn hết được.</p>
+  <h3>4.2 Một bước của môi trường</h3>
+  <p>Toàn bộ quy luật nằm trong một hàm thuần <code>transition(grid, pos, cleaned, action, reward_config)</code>. Hàm thuần nghĩa là không dùng biến toàn cục, không ngẫu nhiên và không sửa dữ liệu đầu vào. Cả môi trường lẫn Value Iteration đều gọi đúng hàm này, nên hai bên không bao giờ tính phần thưởng khác nhau. Đây là một lỗi ngầm rất phổ biến khi tự viết đáp án tối ưu.</p>
+<pre><code>robot chọn hướng
+  → đụng tường/đồ đạc : đứng yên,             thưởng −0,5 − 0,01
+  → ô chưa dọn        : đi tới, đánh dấu dọn,  thưởng +1,0 − 0,01
+  → ô đã dọn          : đi tới,                thưởng −0,1 − 0,01
+  → nếu đã dọn hết    : thưởng thêm +10, terminated = True
+  → nếu quá 4·|F| bước: truncated = True</code></pre>
+  <h3>4.3 Robot "nhìn thấy" gì</h3>
+  <p>Mạng nơ-ron nhận một tensor 3 kênh kích thước (3, H, W), giống một ảnh 3 lớp:</p>
+  <div class="cols">
+    <div><b>Kênh 0</b>: vị trí robot (một ô bằng 1)</div>
+    <div><b>Kênh 1</b>: các ô đã dọn</div>
+    <div><b>Kênh 2</b>: vật cản</div>
+  </div>
+  <p>Q-learning dạng bảng thì dùng khóa <code>(hàng, cột, mask)</code>, trong đó <code>mask</code> là một số nguyên mà mỗi bit ứng với một ô trống đã dọn hay chưa.</p>
+  <h3>4.4 Hiển thị</h3>
+  <div class="legend">
+    <span class="chip"><i style="background:#ebebeb"></i>sàn chưa dọn</span>
+    <span class="chip"><i style="background:#a0d2ff"></i>đã dọn</span>
+    <span class="chip"><i style="background:#3c3c3c"></i>vật cản</span>
+    <span class="chip"><i style="background:#dc3232;border-radius:50%"></i>robot (chấm trắng chỉ hướng)</span>
+    <span class="chip"><i style="background:#5a8cdc"></i>vệt đường đi</span>
+  </div>
+  <p>Phần hiển thị vẽ bằng Pillow, ghép thành GIF. Nó chỉ để xem, không ảnh hưởng tới việc học.</p>
+  <figure>
+    <img src="results/demo/compare_obstacle_4x4.gif" alt="Năm robot cùng dọn phòng 4x4 có vật cản" loading="lazy">
+    <figcaption>Cùng phòng 4×4 có vật cản, cùng điểm xuất phát (0,0): đi ngẫu nhiên, zigzag, greedy BFS, Q-learning và đường tối ưu của Value Iteration.</figcaption>
+  </figure>
+</section>
+
+<section id="phuong-phap">
+  <h2><span class="num">5</span>Các phương pháp</h2>
+  <p>Dự án không dùng hết các thuật toán trong sách. Nó gồm hai mô hình học và hai loại thước đo không học:</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Vai trò</th><th>Phương pháp</th><th>Giáo trình / nguồn</th><th>File</th></tr></thead>
+    <tbody>
+      <tr><td><b>Mô hình chính</b></td><td>Q-learning dạng bảng</td><td>S&amp;B mục 6.5</td><td><code>tabular/q_learning.py</code></td></tr>
+      <tr><td><b>Mở rộng của mô hình chính</b></td><td>DQN = Q-learning + mạng CNN + replay buffer + target network</td><td>S&amp;B 9, 11.3, 16.5; Mnih et al. 2015</td><td><code>deep/dqn.py</code></td></tr>
+      <tr><td>Đáp án tối ưu (không học)</td><td>Value Iteration trên đồ thị trạng thái</td><td>S&amp;B mục 4.4</td><td><code>tabular/value_iteration.py</code></td></tr>
+      <tr><td>So sánh (không học)</td><td>Đi ngẫu nhiên, zigzag, greedy BFS</td><td>—</td><td><code>baselines/</code></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>5.1 Ba baseline không dùng RL</h3>
+  <ul>
+    <li><b>random_walk</b>: chọn ngẫu nhiên một hướng không đâm tường. Mốc "không có chiến lược".</li>
+    <li><b>zigzag</b>: quét kiểu luống cày (hàng chẵn trái sang phải, hàng lẻ ngược lại). Gặp vật cản thì đi vòng bằng đường ngắn nhất tới ô chưa dọn đầu tiên theo thứ tự quét. Đây là cách máy cắt cỏ và robot rẻ tiền hay dùng.</li>
+    <li><b>greedy_bfs</b>: luôn đi tới ô chưa dọn gần nhất (tìm bằng BFS). Mạnh, nhưng hay bỏ sót góc rồi phải quay lại.</li>
+  </ul>
+
+  <h3>5.2 Value Iteration: đáp án tối ưu để chấm điểm</h3>
+  <p>Với phòng nhỏ, có thể liệt kê mọi trạng thái đạt tới được bằng BFS (3×3: 1.081 trạng thái; 4×4 có vật cản: 4.688; 4×4 trống: 109.248), rồi áp dụng công thức Bellman cho tới khi hội tụ:</p>
+<pre><code>V(s) ← max_a [ r(s,a) + γ · V(s') ]        (s' terminal thì V(s') = 0)
+lặp cho tới khi thay đổi lớn nhất Δ &lt; 10⁻¹⁰</code></pre>
+  <p>Ngoài ra, BFS trên đồ thị trạng thái cho <b>số bước ít nhất chính xác</b> để dọn hết từ mỗi điểm xuất phát. Đây là thước đo "khoảng cách tới tối ưu" của mọi phương pháp khác. Lập luận tô màu bàn cờ cho thấy phòng 3×3 cần 8 bước nếu xuất phát ở góc hoặc tâm, và 9 bước nếu xuất phát ở giữa cạnh. Test tự động xác nhận đúng như vậy.</p>
+
+  <h3>5.3 Q-learning: mô hình chính</h3>
+  <p>Q(s, a) là "tổng phần thưởng kỳ vọng nếu ở trạng thái s làm hành động a, rồi sau đó đi tốt nhất". Robot giữ một bảng Q và cập nhật sau mỗi bước. Code bám đúng từng dòng pseudocode mục 6.5:</p>
+<pre><code># "Initialize S"
+state = encode(env.reset())
+loop:
+    # "Choose A from S using policy derived from Q (ε-greedy)"
+    action = epsilon_greedy(state, ε)
+    # "Take action A, observe R, S'"
+    next_state, reward, terminated, truncated = env.step(action)
+    # "Q(S,A) ← Q(S,A) + α[R + γ max_a Q(S',a) − Q(S,A)]"
+    target = reward if terminated else reward + γ * max(Q[next_state])
+    Q[state][action] += α * (target − Q[state][action])
+    # "S ← S'"   … "until S is terminal"
+    state = next_state</code></pre>
+  <ul>
+    <li><b>ε-greedy</b>: với xác suất ε chọn ngẫu nhiên để khám phá, còn lại chọn hành động có Q lớn nhất. ε giảm tuyến tính từ 1,0 xuống 0,05 trong 80% số episode đầu.</li>
+    <li><b>terminated và truncated</b>: dọn xong thì không cộng giá trị tương lai. Hết bước chỉ là bị cắt ngang, trạng thái sau vẫn còn giá trị nên vẫn cộng γ·max Q.</li>
+    <li>Siêu tham số: α = 0,5 (môi trường tất định nên α lớn vẫn ổn), γ = 0,99.</li>
+  </ul>
+
+  <h3>5.4 DQN: Q-learning khi bảng không còn chứa nổi</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Q-learning dạng bảng</th><th>DQN</th><th>Vì sao đổi</th></tr></thead>
+    <tbody>
+      <tr><td>Q[S][A] tra trong bảng</td><td>QNetwork(obs)[A] do CNN tính</td><td>Quá nhiều trạng thái; mạng khái quát được sang trạng thái chưa gặp (S&amp;B 9.1)</td></tr>
+      <tr><td>target = R + γ max Q(S', a)</td><td>Cùng công thức, max lấy trên bản sao đóng băng của mạng (target network)</td><td>Mục tiêu thay đổi mỗi bước làm học bất ổn (deadly triad, S&amp;B 11.3)</td></tr>
+      <tr><td>Cập nhật ngay sau mỗi bước</td><td>Lưu vào replay buffer, học trên lô 64 mẫu ngẫu nhiên</td><td>Các bước liên tiếp tương quan mạnh; lấy mẫu ngẫu nhiên phá tương quan</td></tr>
+      <tr><td>Q += α(target − Q)</td><td>Một bước gradient trên Huber loss</td><td>Cùng ý "kéo ước lượng về phía mục tiêu"</td></tr>
+      <tr><td>ε-greedy</td><td>ε-greedy (giảm trong 30% số bước đầu)</td><td>Giống hệt</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Mạng nơ-ron</b> (<code>deep/networks.py</code>): Conv 3→16 (3×3) → ReLU → Conv 16→32 (3×3) → ReLU → Flatten → Linear → 128 → ReLU → Linear → 4 giá trị Q. Mạng có khoảng 268 nghìn tham số trên lưới 8×8. Mạng không dùng pooling vì lưới quá nhỏ, mất thông tin vị trí từng ô là mất thông tin quan trọng.</p>
+  <p><b>Siêu tham số</b> (chọn bằng thử nghiệm, mục 9): learning rate 2,5·10⁻⁴, buffer 100.000, batch 64, cập nhật mạng mỗi 4 bước, chép sang target network mỗi 500 bước, 2.000 bước đầu đi ngẫu nhiên để lấp buffer.</p>
+
+  <h3>5.5 Ba cải tiến để DQN dọn được phòng lạ (v3, v4)</h3>
+  <ul>
+    <li><b>Action masking:</b> khi chọn hành động và khi lấy max trong mục tiêu Q, bỏ các hướng đâm vào tường. Thông tin này đọc thẳng từ kênh vật cản của quan sát. Đụng tường không bao giờ có ích, nên che đi không làm mất lời giải tối ưu, mà loại được vòng lặp "đâm tường mãi" của chính sách tất định.</li>
+    <li><b>Quan sát lấy robot làm tâm:</b> dịch ảnh 3 kênh sao cho robot luôn ở giữa. Ảnh có kích thước (2H−1)×(2W−1) để từ tâm vẫn thấy toàn bộ phòng, vùng ngoài bản đồ coi là tường. Nhờ vậy quy tắc "ô bẩn ngay bên trái thì đi trái" chỉ cần học một lần, dùng chung cho mọi vị trí và mọi căn phòng.</li>
+    <li><b>Huấn luyện song song và chọn mô hình:</b> chạy 16 môi trường trong một tiến trình, chọn hành động theo lô trên GPU, cập nhật bằng lô 256 mẫu mỗi 16 bước (cùng tỷ lệ dùng lại dữ liệu như lô 64 mỗi 4 bước). Huấn luyện nhanh gấp gần 4 lần (0,86 so với 3,23 ms/bước). Mô hình cuối là bản có kết quả tốt nhất trên các phòng kiểm định ngẫu nhiên, tách biệt hoàn toàn với tập test, thay vì bản ở bước cuối vốn có thể vừa dao động xuống.</li>
+  </ul>
+</section>
+
+<section id="cong-nghe">
+  <h2><span class="num">6</span>Công nghệ và cấu trúc code</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Công nghệ</th><th>Dùng để làm gì</th></tr></thead>
+    <tbody>
+      <tr><td>Python 3.11–3.13</td><td>Ngôn ngữ chính</td></tr>
+      <tr><td>Gymnasium</td><td>Chuẩn giao diện môi trường RL (<code>reset</code>, <code>step</code>)</td></tr>
+      <tr><td>NumPy</td><td>Lưới, bảng Q, Value Iteration dạng vector, đếm trạng thái</td></tr>
+      <tr><td>PyTorch</td><td>Mạng CNN và huấn luyện DQN, chạy được trên GPU (CUDA) hoặc CPU</td></tr>
+      <tr><td>pandas, Matplotlib</td><td>Ghi log CSV, tổng hợp kết quả, vẽ hình</td></tr>
+      <tr><td>Pillow</td><td>Vẽ khung hình và xuất GIF</td></tr>
+      <tr><td>pytest</td><td>196 test tự động</td></tr>
+      <tr><td>Git</td><td>Quản lý phiên bản, mỗi phần một commit</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Cấu trúc thư mục</h3>
+<pre><code>project_vaccum/
+├── env/          môi trường: bản đồ, transition thuần, VacuumEnv, phòng ngẫu nhiên, render GIF
+├── baselines/    random_walk, zigzag, greedy_bfs (chung giao diện Agent.act)
+├── tabular/      đồ thị trạng thái, Value Iteration, Q-learning
+├── deep/         CNN, replay buffer, DQN (+ action masking)
+├── experiments/  đánh giá chung, các script thí nghiệm, vẽ hình, demo, reproduce_all
+├── tests/        pytest: đơn vị + chạy thử toàn bộ luồng của mọi script
+├── results/      CSV, hình, GIF, config.json (mô hình .pt/.pkl không đưa lên Git)
+├── utils/        đường dẫn, seed, ghi file
+├── PLAN_rel.md, IMPLEMENTATION_PLAN.md, CHANGELOG_DESIGN.md, README.md</code></pre>
+  <h3>Luồng dữ liệu của một thí nghiệm</h3>
+<pre><code>dòng lệnh (--seeds, --workers, --device)
+   → tạo môi trường (VacuumEnv / RandomMapVacuumEnv)
+   → agent học (Q-learning hoặc DQN), đánh giá định kỳ chính sách tham lam
+   → ghi CSV theo từng seed + config.json (siêu tham số, commit git, phiên bản thư viện)
+   → bảng tổng hợp trung bình ± std qua seed + hình learning curve
+   → make_demo dùng mô hình đã lưu để tạo GIF</code></pre>
+  <p>Mọi agent (baseline, Q-learning, DQN, Value Iteration) có chung một giao diện <code>act(obs) → hành động</code> và chạy qua cùng một hàm <code>evaluate()</code>, nên phép so sánh luôn công bằng: cùng bản đồ, cùng giới hạn bước, cùng seed đánh giá.</p>
+</section>
+
+<section id="chay">
+  <h2><span class="num">7</span>Cài đặt và chạy</h2>
+  <h3>7.1 Cài đặt (Windows PowerShell)</h3>
+<pre><code>cd project_vaccum
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --no-cache-dir --upgrade pip
+# Máy có GPU NVIDIA:
+pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu130
+# Máy không có GPU: thay cu130 bằng cpu
+pip install --no-cache-dir -r requirements.txt</code></pre>
+  <p>Trên Google Colab chỉ cần <code>pip install -r requirements.txt</code>. Phiên bản đã kiểm chứng nằm trong <code>requirements-lock.txt</code>.</p>
+  <h3>7.2 Kiểm tra cài đặt</h3>
+<pre><code>python -m pytest -m "not slow"     # ~20 giây
+python -m pytest                   # đầy đủ, gồm chạy thử mọi script (~3 phút)</code></pre>
+  <h3>7.3 Xem nhanh môi trường</h3>
+<pre><code>python -c "from env.render import demo_random_gif; demo_random_gif('furniture_8x8', 'results/gifs/random_8x8.gif')"</code></pre>
+  <h3>7.4 Chạy từng thí nghiệm</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Thí nghiệm</th><th>Lệnh</th><th class="num">Thời gian*</th></tr></thead>
+    <tbody>
+      <tr><td>Baseline</td><td><code>python -m experiments.run_baselines</code></td><td class="num">&lt; 1 phút</td></tr>
+      <tr><td>Đáp án tối ưu</td><td><code>python -m experiments.run_value_iteration</code></td><td class="num">&lt; 1 phút</td></tr>
+      <tr><td>Q-learning</td><td><code>python -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --workers 3</code></td><td class="num">~4 phút</td></tr>
+      <tr><td>E7 + giới hạn bảng Q</td><td><code>python -m experiments.run_state_explosion --workers 4</code></td><td class="num">~16 phút</td></tr>
+      <tr><td>E1 tính Markov</td><td><code>python -m experiments.run_ablation --exp markov --workers 3</code></td><td class="num">~5 phút</td></tr>
+      <tr><td>E2 thiết kế reward</td><td><code>python -m experiments.run_ablation --exp reward --workers 3</code></td><td class="num">~6 phút</td></tr>
+      <tr><td>DQN 4×4</td><td><code>python -m experiments.run_deep --map obstacle_4x4 --timesteps 200000 --workers 3</code></td><td class="num">~12 phút</td></tr>
+      <tr><td>DQN 8×8 đồ đạc</td><td><code>python -m experiments.run_deep --map furniture_8x8 --timesteps 500000 --workers 2</code></td><td class="num">~1 giờ</td></tr>
+      <tr><td>DQN v4 phòng lạ 8×8</td><td><code>python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --eval-every 50000 --eval-episodes 50 --workers 3</code></td><td class="num">~1 giờ</td></tr>
+      <tr><td>E3 mật độ vật cản (v4)</td><td><code>python -m experiments.run_generalization --exp density --size 8 8 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --workers 4</code></td><td class="num">~1,7 giờ</td></tr>
+      <tr><td>E4 khái quát hóa (v4)</td><td><code>python -m experiments.run_generalization --exp generalization --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --workers 4</code></td><td class="num">~1,5 giờ</td></tr>
+      <tr><td>E6 khoảng cách tối ưu</td><td><code>python -m experiments.run_optimality --workers 3</code></td><td class="num">~25 phút</td></tr>
+      <tr><td>Demo GIF</td><td><code>python -m experiments.make_demo</code></td><td class="num">~1 phút</td></tr>
+    </tbody>
+  </table></div>
+  <p>* Đo trên laptop 12 nhân, 16 GB RAM, RTX 4050. Mọi script có <code>--help</code>, <code>--seeds</code>, <code>--quick</code> (chạy rút gọn vài chục giây để kiểm tra), <code>--out</code>; script DQN có thêm <code>--device auto|cpu|cuda</code>.</p>
+  <h3>7.5 Chạy lại toàn bộ bằng một lệnh</h3>
+<pre><code>python -m experiments.reproduce_all --quick                # kiểm tra luồng, vài phút
+python -m experiments.reproduce_all --full --workers 3     # chạy thật, nhiều giờ</code></pre>
+  <div class="note"><b>Lưu ý bộ nhớ.</b> Mỗi tiến trình huấn luyện DQN dùng khoảng 0,8 GB RAM (CPU) hoặc 1,4 GB (GPU). Với máy 16 GB, chạy tối đa khoảng 5 tiến trình cùng lúc qua <code>--workers</code> và đừng mở nhiều lệnh song song. Script <code>experiments/memory_guard.ps1</code> ghi log bộ nhớ và tự dừng thí nghiệm nếu bộ nhớ sắp cạn.</div>
+  <div class="note"><b>GPU.</b> Khi huấn luyện một môi trường, mạng rất nhỏ nên GPU chỉ nhanh hơn CPU khoảng 10–40%, vì thời gian chủ yếu nằm ở chạy môi trường từng bước. Với <code>--n-envs 16 --batch-size 256 --train-freq 16</code>, robot chọn hành động theo lô và mạng cập nhật thưa hơn, nên huấn luyện nhanh gấp gần 4 lần (0,86 so với 3,23 ms/bước trên RTX 4050).</div>
+</section>
+
+<section id="ket-qua">
+  <h2><span class="num">8</span>Kết quả thí nghiệm</h2>
+  <p>Quy tắc báo cáo: trung bình ± độ lệch chuẩn qua 5 seed (E3, E4: 3 seed vì giới hạn thời gian), không chọn lần chạy tốt nhất, so sánh trên cùng bản đồ, cùng giới hạn bước, cùng seed đánh giá. Kết quả RL thua baseline cũng được báo cáo.</p>
+
+  <h3>8.1 Baseline</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Phòng</th><th>Phương pháp</th><th class="num">Dọn xong</th><th class="num">Tỷ lệ đã dọn</th><th class="num">Số bước TB</th><th class="num">Bước đi lại</th></tr></thead>
+    <tbody>
+      <tr><td>3×3</td><td>random_walk</td><td class="num">72%</td><td class="num">96%</td><td class="num">26,2</td><td class="num">65%</td></tr>
+      <tr><td>3×3</td><td>zigzag</td><td class="num">100%</td><td class="num">100%</td><td class="num">9,0</td><td class="num">10%</td></tr>
+      <tr><td>3×3</td><td>greedy_bfs</td><td class="num">100%</td><td class="num">100%</td><td class="num">8,6</td><td class="num">6%</td></tr>
+      <tr><td>4×4 vật cản</td><td>random_walk</td><td class="num">34%</td><td class="num">88%</td><td class="num">47,3</td><td class="num">77%</td></tr>
+      <tr><td>4×4 vật cản</td><td>zigzag</td><td class="num">100%</td><td class="num">100%</td><td class="num">16,3</td><td class="num">24%</td></tr>
+      <tr><td>4×4 vật cản</td><td>greedy_bfs</td><td class="num">100%</td><td class="num">100%</td><td class="num">16,1</td><td class="num">25%</td></tr>
+      <tr><td>8×8 đồ đạc</td><td>random_walk</td><td class="num">0%</td><td class="num">73%</td><td class="num">208 (hết bước)</td><td class="num">82%</td></tr>
+      <tr><td>8×8 đồ đạc</td><td>zigzag</td><td class="num">100%</td><td class="num">100%</td><td class="num">80,0</td><td class="num">36%</td></tr>
+      <tr><td>8×8 đồ đạc</td><td>greedy_bfs</td><td class="num">100%</td><td class="num">100%</td><td class="num">58,9</td><td class="num">13%</td></tr>
+    </tbody>
+  </table></div>
+  <p>Mỗi dòng: 5 seed × 20 episode, xuất phát ngẫu nhiên. Zigzag yếu đi rõ khi phòng có nhiều đồ đạc.</p>
+
+  <h3>8.2 Q-learning đạt đúng tối ưu (E6)</h3>
+  <div class="cols">
+    <figure><img src="results/tabular/figures/tabular_learning_curve_obstacle_4x4_s00.png" alt="Learning curve Q-learning 4x4" loading="lazy"><figcaption>Số bước của chính sách tham lam giảm về đúng mức tối ưu 13 trong khoảng 1.000 episode (5 seed).</figcaption></figure>
+    <figure><img src="results/tabular/figures/q_convergence_obstacle_4x4_s00.png" alt="Q hội tụ về V*" loading="lazy"><figcaption>Giá trị max Q(s₀, a) mà Q-learning học được hội tụ về đúng V*(s₀) do Value Iteration tính.</figcaption></figure>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Phòng</th><th>Xuất phát</th><th class="num">Tối thiểu</th><th class="num">Q-learning</th><th class="num">DQN</th><th class="num">greedy_bfs</th><th class="num">zigzag</th></tr></thead>
+    <tbody>
+      <tr><td>3×3</td><td>(0,0) góc</td><td class="num">8</td><td class="num best">8 (+0%)</td><td class="num best">8 (+0%)</td><td class="num">8 (+0%)</td><td class="num">8 (+0%)</td></tr>
+      <tr><td>3×3</td><td>(0,1) giữa cạnh</td><td class="num">9</td><td class="num best">9 (+0%)</td><td class="num best">9 (+0%)</td><td class="num">9 (+0%)</td><td class="num">9 (+0%)</td></tr>
+      <tr><td>3×3</td><td>(1,1) tâm</td><td class="num">8</td><td class="num best">8 (+0%)</td><td class="num best">8 (+0%)</td><td class="num">8 (+0%)</td><td class="num">10 (+25%)</td></tr>
+      <tr><td>4×4 vật cản</td><td>(0,0)</td><td class="num">13</td><td class="num best">13 (+0%)</td><td class="num best">13 (+0%)</td><td class="num">16 (+23%)</td><td class="num">16 (+23%)</td></tr>
+      <tr><td>4×4 vật cản</td><td>(0,3)</td><td class="num">13</td><td class="num best">13 (+0%)</td><td class="num best">13 (+0%)</td><td class="num">13 (+0%)</td><td class="num">19 (+46%)</td></tr>
+      <tr><td>4×4 vật cản</td><td>(1,2)</td><td class="num">13</td><td class="num best">13 (+0%)</td><td class="num best">13 (+0%)</td><td class="num">17 (+31%)</td><td class="num">19 (+46%)</td></tr>
+      <tr><td>4×4 vật cản</td><td>(2,0)</td><td class="num">12</td><td class="num best">12 (+0%)</td><td class="num best">12 (+0%)</td><td class="num">17 (+42%)</td><td class="num">12 (+0%)</td></tr>
+      <tr><td>4×4 vật cản</td><td>(3,3)</td><td class="num">12</td><td class="num best">12 (+0%)</td><td class="num best">12 (+0%)</td><td class="num">15 (+25%)</td><td class="num">18 (+50%)</td></tr>
+    </tbody>
+  </table></div>
+  <p>Q-learning huấn luyện riêng cho từng điểm xuất phát (5 seed); DQN dùng một mô hình mỗi phòng, huấn luyện với xuất phát ngẫu nhiên (5 seed). Cả hai đạt đúng số bước tối thiểu ở mọi ô, độ lệch chuẩn bằng 0. Khi xuất phát ngẫu nhiên trên 4×4, Q-learning đạt trung bình 12,72 bước so với tối ưu trung bình 12,69.</p>
+
+  <h3>8.3 E7: bùng nổ không gian trạng thái, giới hạn của bảng Q</h3>
+  <div class="cols">
+    <figure><img src="results/figures/state_explosion.png" alt="Bùng nổ trạng thái" loading="lazy"><figcaption>Số trạng thái tăng theo hàm mũ: 4×5 đã có 1,4 triệu trạng thái đạt tới được; 8×8 có cận trên khoảng 10²¹.</figcaption></figure>
+    <figure><img src="results/figures/tabular_scaling.png" alt="Q-learning khi lưới lớn dần" loading="lazy"><figcaption>15 phút huấn luyện mỗi lưới (xuất phát cố định): bảng Q của 6×6 phình tới 1,95 triệu trạng thái (~746 MB).</figcaption></figure>
+  </div>
+  <div class="note">Kết quả này khác giả thuyết ban đầu. Với phòng <em>trống</em> và điểm xuất phát cố định, Q-learning vẫn học được tới 6×6 (35 bước, đúng tối ưu). Giới hạn thật của bảng Q là <b>bộ nhớ tăng theo hàm mũ</b> và <b>bảng chỉ dùng được cho đúng một căn phòng và một điểm xuất phát</b>. Đó là lý do cần mạng nơ-ron.</div>
+
+  <h3>8.4 E1: trạng thái thiếu thông tin "đã dọn" thì không học được</h3>
+  <figure><img src="results/ablation/figures/e1_markov_obstacle_4x4.png" alt="E1 tính Markov" loading="lazy"><figcaption>Q-learning trên 4×4, xuất phát (0,0), 20.000 episode, 5 seed.</figcaption></figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Trạng thái</th><th class="num">Dọn xong</th><th class="num">Tỷ lệ đã dọn</th><th class="num">Số bước</th></tr></thead>
+    <tbody>
+      <tr><td>Đầy đủ (vị trí + ô đã dọn)</td><td class="num best">100%</td><td class="num">100%</td><td class="num">13 (tối ưu)</td></tr>
+      <tr><td>Chỉ vị trí</td><td class="num weak">0%</td><td class="num">45% ± 22%</td><td class="num">52 (hết bước)</td></tr>
+    </tbody>
+  </table></div>
+  <p>Khi chỉ biết vị trí, chính sách tất định chỉ có một hướng cho mỗi ô, nên robot đi theo một vòng lặp cố định mãi mãi. Đây là bằng chứng thực nghiệm cho tính Markov (S&amp;B mục 3.1).</p>
+
+  <h3>8.5 E2: thiết kế phần thưởng và reward hacking</h3>
+  <div class="cols">
+    <figure><img src="results/ablation/figures/e2_reward_curves_obstacle_4x4.png" alt="E2 bốn thiết kế reward" loading="lazy"><figcaption>Bốn thiết kế reward, Q-learning trên 4×4, 5 seed.</figcaption></figure>
+    <figure><img src="results/ablation/gifs/e2_reward_hacking_obstacle_4x4.gif" alt="Reward hacking" loading="lazy"><figcaption>Reward "hackable": robot dọn 92% rồi đi qua đi lại để ăn điểm thay vì dọn nốt.</figcaption></figure>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Reward</th><th>Mô tả</th><th class="num">Dọn xong</th><th class="num">Số bước</th></tr></thead>
+    <tbody>
+      <tr><td>sparse</td><td>chỉ thưởng +10 khi dọn xong</td><td class="num">100%</td><td class="num">13</td></tr>
+      <tr><td>dense</td><td>như bảng mục 3</td><td class="num">100%</td><td class="num">13</td></tr>
+      <tr><td>shaped</td><td>dense + shaping thế năng theo khoảng cách tới ô bẩn gần nhất</td><td class="num">100%</td><td class="num">13</td></tr>
+      <tr><td>hackable</td><td>thưởng +0,5 khi lại gần ô bẩn, không phạt khi đi xa, không phạt đi lại</td><td class="num weak">0%</td><td class="num">52 (hết bước)</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li><b>Reward hacking tái hiện ở cả 5 seed.</b> Với reward "hackable", vòng "đi xa một bước rồi quay lại" luôn có lãi +0,5, nên robot học cách lặp vòng (37 lần qua lại trong một episode) thay vì dọn xong.</li>
+    <li><b>Kiểm chứng lý thuyết shaping</b> (Ng, Harada &amp; Russell 1999): so chính sách tối ưu của Value Iteration giữa reward dense và shaped trên toàn bộ 4.676 trạng thái, <b>0 trạng thái khác nhau</b>. Shaping dạng thế năng không làm đổi chính sách tối ưu, đúng như định lý.</li>
+    <li>Reward sparse vẫn học được trên 4×4 vì đi ngẫu nhiên cũng thỉnh thoảng dọn xong (34% số episode), nên robot vẫn thấy được phần thưởng.</li>
+  </ul>
+
+  <h3>8.6 DQN trên phòng cố định</h3>
+  <figure><img src="results/deep/figures/deep_learning_curve_furniture_8x8.png" alt="DQN 8x8" loading="lazy"><figcaption>DQN trên phòng 8×8 có đồ đạc, xuất phát ngẫu nhiên, 500.000 bước, 5 seed. Sau khoảng 350.000 bước, DQN vượt cả greedy BFS.</figcaption></figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Phòng</th><th class="num">Dọn xong</th><th class="num">Số bước DQN</th><th class="num">Tham chiếu</th></tr></thead>
+    <tbody>
+      <tr><td>3×3, xuất phát (0,0), 30k bước</td><td class="num">100%</td><td class="num best">8,0 ± 0</td><td class="num">tối ưu 8</td></tr>
+      <tr><td>4×4 vật cản, xuất phát ngẫu nhiên, 200k bước</td><td class="num">100%</td><td class="num best">12,72 ± 0,09</td><td class="num">tối ưu TB 12,69</td></tr>
+      <tr><td>8×8 đồ đạc, xuất phát ngẫu nhiên, 500k bước</td><td class="num">100%</td><td class="num best">51,9 ± 0,7</td><td class="num">greedy 58,9; zigzag 80,0; cận dưới 51</td></tr>
+    </tbody>
+  </table></div>
+  <figure><img src="results/demo/compare_furniture_8x8.gif" alt="Cuộc đua 4 robot trên phòng 8x8" loading="lazy"><figcaption>Cùng phòng 8×8, cùng điểm xuất phát: đi ngẫu nhiên, zigzag, greedy BFS, DQN.</figcaption></figure>
+  <figure><img src="results/demo/heatmap_furniture_8x8.png" alt="Heatmap số lần đi qua" loading="lazy"><figcaption>Số lần đi qua mỗi ô: đỏ đậm là lãng phí. DQN gần như đi qua mỗi ô đúng một lần.</figcaption></figure>
+  <figure><img src="results/demo/progress_qlearning.gif" alt="Robot học dần" loading="lazy"><figcaption>"Robot học dần": cùng phòng 4×4, chính sách Q-learning sau 0, 1.000, 10.000 episode và khi học xong.</figcaption></figure>
+
+  <h3>8.7 E4: khái quát sang phòng chưa từng thấy</h3>
+  <figure><img src="results/generalization/figures/e4_generalization_6x6_mask_ego_ne16_bs256_tf16.png" alt="E4 khái quát hóa" loading="lazy"><figcaption>DQN v4 huấn luyện trên K phòng 6×6 (mật độ vật cản 15%), đo trên phòng đã gặp và 50 phòng chưa gặp; 2 triệu bước, 3 seed.</figcaption></figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Huấn luyện trên</th><th class="num">Phòng lạ: đã dọn</th><th class="num">Phòng lạ: dọn xong</th><th class="num">Số bước khi xong</th><th class="num">Bản v2 cũ: đã dọn</th></tr></thead>
+    <tbody>
+      <tr><td>1 phòng</td><td class="num">61%</td><td class="num">9%</td><td class="num">36,4</td><td class="num">20%</td></tr>
+      <tr><td>10 phòng</td><td class="num">97%</td><td class="num">83%</td><td class="num">34,5</td><td class="num">35%</td></tr>
+      <tr><td>100 phòng</td><td class="num">99%</td><td class="num">95%</td><td class="num">34,0</td><td class="num">35%</td></tr>
+      <tr><td>Vô hạn (phòng mới mỗi episode)</td><td class="num best">100%</td><td class="num best">99%</td><td class="num best">33,8</td><td class="num">35%</td></tr>
+      <tr><td colspan="5">Tham chiếu trên cùng 50 phòng lạ: greedy BFS 38,8 bước, zigzag 44,2 bước (luôn dọn xong).</td></tr>
+    </tbody>
+  </table></div>
+  <p>Hai kết luận. Thứ nhất, <b>càng huấn luyện trên nhiều phòng thì càng khái quát tốt</b>: chỉ 1 phòng thì mạng học thuộc phòng đó (100% trên phòng đã gặp, 61% trên phòng lạ); từ 100 phòng trở lên, kết quả trên phòng lạ gần bằng trên phòng đã gặp. Thứ hai, với phòng 6×6, DQN v4 <b>dọn phòng lạ ít bước hơn greedy BFS 13%</b> (33,8 so với 38,8).</p>
+
+  <h3>8.8 E3: phòng lạ 8×8 theo mật độ vật cản</h3>
+  <figure><img src="results/generalization/figures/e3_density_8x8_mask_ego_ne16_bs256_tf16.png" alt="E3 mật độ vật cản" loading="lazy"><figcaption>DQN v4 huấn luyện riêng cho từng mật độ trên phòng ngẫu nhiên 8×8, đo trên 20 phòng test chưa gặp; 2 triệu bước, 3 seed.</figcaption></figure>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Mật độ vật cản</th><th class="num">DQN v4: đã dọn</th><th class="num">DQN v4: dọn xong</th><th class="num">DQN: bước khi xong</th><th class="num">greedy BFS</th><th class="num">zigzag</th><th class="num">Bản v2 cũ: đã dọn</th></tr></thead>
+    <tbody>
+      <tr><td>0% (phòng trống)</td><td class="num best">100%</td><td class="num best">100%</td><td class="num best">63,7</td><td class="num">67,2</td><td class="num">69,5</td><td class="num">100%</td></tr>
+      <tr><td>10%</td><td class="num">98%</td><td class="num">87%</td><td class="num best">63,6</td><td class="num">71,1</td><td class="num">77,9</td><td class="num">17%</td></tr>
+      <tr><td>20%</td><td class="num">93%</td><td class="num">61%</td><td class="num">73,1</td><td class="num">70,9</td><td class="num">88,5</td><td class="num">9%</td></tr>
+      <tr><td>30%</td><td class="num">82%</td><td class="num weak">34%</td><td class="num">71,7</td><td class="num">70,8</td><td class="num">102,6</td><td class="num">7%</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>Phòng trống và mật độ 10%: DQN v4 <b>nhanh hơn cả greedy BFS</b> khi dọn xong (63,6–63,7 bước so với 67,2–71,1). Phòng trống 8×8 cần tối thiểu 63 bước, nên DQN gần như tối ưu.</li>
+    <li>Zigzag tốn thêm nhiều bước khi mật độ tăng (69,5 → 102,6); greedy giữ ổn định quanh 71.</li>
+    <li>Mật độ 20–30%: DQN vẫn dọn được 82–93% diện tích, nhưng chỉ dọn xong 34–61% số phòng. Greedy BFS luôn dọn xong. Phòng càng nhiều vật cản thì hình dạng càng đa dạng và các ô bẩn còn lại càng bị chia cắt, nên cần nhiều dữ liệu huấn luyện hơn.</li>
+  </ul>
+
+  <h3 id="phong-la">8.9 Bản chính: phòng lạ 8×8 (mật độ 15%)</h3>
+  <p>Đây là thước đo khó nhất: một mô hình được huấn luyện trên phòng ngẫu nhiên 8×8 (mỗi episode một phòng mới, 15% vật cản), rồi đo trên <b>50 phòng test mà nó chưa từng thấy</b>, mỗi phòng 1 lần với điểm xuất phát ngẫu nhiên, qua 5 seed huấn luyện.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Phiên bản</th><th class="num">Đã dọn</th><th class="num">Dọn xong</th><th class="num">Số bước khi xong</th><th class="num">Va chạm</th></tr></thead>
+    <tbody>
+      <tr><td>v2 (DQN ban đầu, 500k bước)</td><td class="num">14% ± 1%</td><td class="num">0%</td><td class="num">—</td><td class="num">101 / episode</td></tr>
+      <tr><td>v3 (+ action masking, 500k bước)</td><td class="num">37% ± 5%</td><td class="num">0%</td><td class="num">—</td><td class="num">0</td></tr>
+      <tr><td><b>v4 (+ robot làm tâm, song song, chọn mô hình; 2 triệu bước)</b></td><td class="num best">98% ± 1%</td><td class="num best">80% ± 9%</td><td class="num best">69,0 ± 1,5</td><td class="num">0</td></tr>
+      <tr><td>greedy BFS (không học)</td><td class="num">100%</td><td class="num">100%</td><td class="num">71,4</td><td class="num">0</td></tr>
+      <tr><td>zigzag (không học)</td><td class="num">100%</td><td class="num">100%</td><td class="num">80,8</td><td class="num">0</td></tr>
+    </tbody>
+  </table></div>
+  <p>Kết quả từng seed của v4 (đã dọn / dọn xong / bước khi xong): 99,5% / 88% / 67,3 · 97,9% / 92% / 68,8 · 97,7% / 74% / 70,4 · 96,4% / 76% / 68,1 · 96,5% / 70% / 70,7. Cả 5 seed đều dọn trên 96% diện tích phòng lạ. <b>Khi dọn xong, DQN v4 dùng ít bước hơn greedy BFS ở cả 5 seed.</b> 20% số lần còn lại là robot lặp vòng ở vùng đã dọn cho tới khi hết bước.</p>
+  <figure><img src="results/deep/figures/deep_learning_curve_rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16.png" alt="Learning curve DQN v4 trên phòng ngẫu nhiên" loading="lazy"><figcaption>DQN v4 trên phòng ngẫu nhiên 8×8, đánh giá định kỳ trên 50 phòng kiểm định, 5 seed. Đường số bước vẫn còn giảm ở 2 triệu bước: huấn luyện lâu hơn còn có thể cải thiện.</figcaption></figure>
+  <figure><img src="results/demo/unseen_rooms.gif" alt="DQN dọn 3 phòng chưa từng thấy" loading="lazy"><figcaption>Ba phòng chưa từng thấy: DQN v4 (trái) và greedy BFS (phải). DQN dọn xong cả ba trong 65, 61 và 82 bước; greedy BFS lần lượt 69, 75 và 78 bước.</figcaption></figure>
+</section>
+
+<section id="cai-tien">
+  <h2><span class="num">9</span>Quá trình thực hiện và cải tiến</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Phiên bản</th><th>Thay đổi</th><th>Lý do</th><th>Kết quả</th></tr></thead>
+    <tbody>
+      <tr><td>v1</td><td>Reward dense; Q-learning chính, DQN mở rộng; bỏ Double Q, PPO, curriculum</td><td>Tập trung một câu chuyện dễ giải thích</td><td>Q-learning đạt tối ưu trên 3×3, 4×4</td></tr>
+      <tr><td>v2</td><td>DQN: learning rate 5·10⁻⁴ → 2,5·10⁻⁴, target 1000 → 500, buffer 50k → 100k; mạng nhỏ hơn</td><td>Cấu hình cũ sụp giữa chừng (tỷ lệ dọn rơi về 72% ở 30–40k bước); huấn luyện CPU chậm</td><td>DQN 4×4 gần tối ưu (12,67 so với 12,69), ổn định; nhanh gấp 3,2 lần</td></tr>
+      <tr><td>v3</td><td>Action masking cho DQN</td><td>Ở phòng lạ, robot dành ~47% số bước để đâm tường</td><td>Phòng lạ 8×8: 14% → 37% đã dọn, 0 va chạm; vẫn chưa dọn xong phòng nào</td></tr>
+      <tr><td>v4</td><td>Quan sát lấy robot làm tâm; 16 môi trường song song, lô 256; chọn mô hình theo tập kiểm định</td><td>Mạng phải học lại cùng một quy tắc ở mọi vị trí; huấn luyện chậm; kết quả dao động giữa các lần đánh giá</td><td>Phòng lạ 8×8: 37% → 98% đã dọn, 0% → 80% dọn xong; phòng lạ 6×6: 99% dọn xong</td></tr>
+    </tbody>
+  </table></div>
+  <h3>9.1 Chọn siêu tham số DQN (v2)</h3>
+  <p>Bốn cấu hình được thử trên phòng 4×4 xuất phát ngẫu nhiên, 150k bước. Cấu hình ban đầu cũng đạt tối ưu nhưng bị sụp ở 30–40k bước, một hiện tượng điển hình của DQN khi mục tiêu thay đổi quá nhanh. Cấu hình được chọn (learning rate thấp hơn, target cập nhật thường xuyên hơn, buffer lớn hơn) ổn định từ 20k bước. Log nằm trong <code>results/tuning/</code>.</p>
+  <h3>9.2 Action masking (v3)</h3>
+  <p>Chẩn đoán: trên phòng ngẫu nhiên 8×8, DQN dọn 14% và trung bình 101 trên 216 bước là va chạm. Chính sách tham lam tất định gặp phòng lạ, ước lượng sai và chọn đâm tường. Vì trạng thái không đổi nên hành động cũng không đổi, và robot đâm tường mãi. Đường cong học đi ngang suốt 500k bước, nên thiếu bước huấn luyện không phải nguyên nhân.</p>
+  <p>Cải tiến: khi chọn hành động và khi lấy max trong mục tiêu Q, bỏ các hướng đâm vào tường (tính trực tiếp từ kênh vật cản của observation). Đụng tường không bao giờ có ích, nên che đi không làm mất chính sách tối ưu.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Phòng ngẫu nhiên 6×6, 150k bước, 2 seed</th><th class="num">Tỷ lệ đã dọn</th><th class="num">Dọn xong</th><th class="num">Va chạm / episode</th></tr></thead>
+    <tbody>
+      <tr><td>Không mask</td><td class="num">31%</td><td class="num">0%</td><td class="num">36</td></tr>
+      <tr><td>Có action mask</td><td class="num best">69%</td><td class="num">7%</td><td class="num">0</td></tr>
+    </tbody>
+  </table></div>
+  <h3>9.3 Quan sát lấy robot làm tâm và huấn luyện song song (v4)</h3>
+  <p>Action masking xóa được vòng lặp đâm tường, nhưng robot vẫn lặp qua lại giữa các ô đã dọn (91% số bước). Nguyên nhân: với quan sát gốc, mạng phải học riêng cho từng vị trí trên bản đồ, nên gặp phòng lạ là không biết đi đâu. Bốn cấu hình được thử trên phòng ngẫu nhiên 8×8 (600k bước, 2 seed, 16 môi trường song song):</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Cấu hình (đều có action mask)</th><th class="num">Đã dọn</th><th class="num">Dọn xong</th></tr></thead>
+    <tbody>
+      <tr><td>Quan sát gốc</td><td class="num">60%</td><td class="num">1%</td></tr>
+      <tr><td><b>Quan sát lấy robot làm tâm</b></td><td class="num best">91%</td><td class="num best">42%</td></tr>
+      <tr><td>Quan sát gốc + reward shaping (hệ số 2)</td><td class="num">59%</td><td class="num">0%</td></tr>
+      <tr><td>Lấy robot làm tâm + reward shaping</td><td class="num">89%</td><td class="num">33%</td></tr>
+    </tbody>
+  </table></div>
+  <p>Quan sát lấy robot làm tâm là cải tiến quyết định. Reward shaping không giúp thêm, nên được bỏ để giữ thiết kế đơn giản. Đường cong học còn đi lên ở 600k bước và dao động giữa các lần đánh giá, nên bản chính được huấn luyện 2 triệu bước và chọn mô hình theo tập kiểm định. Log nằm trong <code>results/v4_ab/</code>.</p>
+
+  <h3>9.4 Các lỗi đã gặp và cách sửa</h3>
+  <ul>
+    <li>Venv dùng chung thư viện với Anaconda kéo theo plugin pytest bị lỗi: chuyển sang venv cô lập.</li>
+    <li>Console Windows không in được tiếng Việt: chuyển đầu ra sang UTF-8.</li>
+    <li>Lượt Q-learning xuất phát ngẫu nhiên ghi đè thư mục của lượt xuất phát cố định: thêm hậu tố điểm xuất phát (<code>_s00</code>) vào tên thư mục và chạy lại.</li>
+    <li>Cài torch bản CPU dù máy có GPU: chuyển sang bản CUDA, thêm <code>--device auto</code>.</li>
+    <li>Chạy quá nhiều tiến trình làm tràn RAM; worker Q-learning vẫn import torch (1,3 GB mỗi tiến trình): sửa code, giới hạn số worker, thêm script canh bộ nhớ.</li>
+  </ul>
+  <p>Toàn bộ thay đổi thiết kế ghi trong <code>CHANGELOG_DESIGN.md</code>, kèm các dòng đề xuất cho bảng B8 của kế hoạch.</p>
+</section>
+
+<section id="gioi-han">
+  <h2><span class="num">10</span>Giới hạn và hướng phát triển</h2>
+  <h3>Giới hạn</h3>
+  <ul>
+    <li>Mô phỏng đơn giản hóa: robot đi từng ô, chuyển động tất định, không trượt bánh, không cảm biến nhiễu, không SLAM, vật cản tĩnh, một robot.</li>
+    <li>Q-learning dạng bảng chỉ dùng được cho một căn phòng và một điểm xuất phát; bộ nhớ tăng theo hàm mũ.</li>
+    <li>Trên phòng lạ nhiều vật cản (20–30%), DQN v4 chỉ dọn xong 34–61% số phòng; thỉnh thoảng chính sách tất định vẫn lặp vòng ở vùng đã dọn. Greedy BFS luôn dọn xong.</li>
+    <li>Mỗi mô hình DQN chỉ dùng cho một kích thước lưới (đầu vào mạng cố định).</li>
+    <li>E3, E4 dùng 3 seed thay vì 5 vì giới hạn thời gian.</li>
+  </ul>
+  <h3>Hướng phát triển</h3>
+  <ul>
+    <li>Huấn luyện lâu hơn và trên nhiều mật độ vật cản cùng lúc; đường cong học ở 2 triệu bước vẫn còn đi lên.</li>
+    <li>Kết hợp: dùng DQN làm chính sách chính, chuyển sang greedy BFS khi phát hiện robot lặp lại một trạng thái, để đảm bảo luôn dọn xong.</li>
+    <li>Mạng tích chập toàn phần (fully convolutional) để một mô hình dùng được cho nhiều kích thước phòng.</li>
+    <li>Mở rộng thực tế: pin và trạm sạc, vật cản động (người, thú cưng), quan sát một phần (POMDP), nhiều robot, chuyển sang robot thật (sim-to-real).</li>
+  </ul>
+</section>
+
+<section id="van-dap">
+  <h2><span class="num">11</span>Chuẩn bị vấn đáp</h2>
+  <dl class="qa">
+    <dt>Vì sao state phải chứa bản đồ đã dọn?</dt>
+    <dd>Để thỏa tính Markov: cùng vị trí nhưng tiến độ khác nhau thì phần thưởng tương lai khác nhau. E1 cho thấy thiếu thông tin này thì robot lặp vòng, chỉ dọn 45%.</dd>
+    <dt>Q-learning khác SARSA ở đâu?</dt>
+    <dd>Q-learning dùng max_a Q(S', a) (off-policy, học giá trị của chính sách tối ưu); SARSA dùng Q(S', A') với A' là hành động thực sự sẽ làm (on-policy). Chỉ khác đúng một dòng.</dd>
+    <dt>Tại sao terminated và truncated xử lý khác nhau?</dt>
+    <dd>Terminated là kết thúc thật (đã dọn hết), giá trị tương lai bằng 0. Truncated chỉ là bị cắt do hết bước, trạng thái sau vẫn còn giá trị nên vẫn phải cộng γ·max Q. Nhầm hai cái là lỗi phổ biến nhất khi tự viết RL.</dd>
+    <dt>Làm sao biết code Q-learning đúng?</dt>
+    <dd>So với đáp án Value Iteration: Q-learning đạt đúng số bước tối thiểu ở mọi điểm xuất phát và max Q(s₀) hội tụ về đúng V*(s₀) = 16,9689 trên 3×3 (tính tay được). Có test tự động cho cả hai.</dd>
+    <dt>Vì sao cần DQN khi Q-learning đã tối ưu?</dt>
+    <dd>Bảng Q tăng theo hàm mũ (8×8 có khoảng 10²¹ trạng thái tiềm năng) và chỉ dùng được cho đúng một phòng. Mạng nơ-ron nén thông tin và về nguyên tắc khái quát được sang trạng thái chưa gặp.</dd>
+    <dt>Target network và replay buffer để làm gì?</dt>
+    <dd>Replay buffer phá tương quan giữa các bước liên tiếp và dùng lại kinh nghiệm. Target network giữ mục tiêu ổn định trong một khoảng thời gian, tránh "đuổi theo cái bóng của chính mình", một biểu hiện của deadly triad (xấp xỉ hàm + bootstrap + off-policy).</dd>
+    <dt>Reward hacking là gì, dự án có không?</dt>
+    <dd>Là khi agent tìm cách ăn điểm mà không làm đúng nhiệm vụ. Với reward chỉ thưởng khi lại gần ô bẩn mà không phạt khi đi xa, robot học cách đi qua đi lại mãi; tái hiện ở cả 5 seed (E2).</dd>
+    <dt>Shaping có làm thay đổi lời giải tối ưu không?</dt>
+    <dd>Shaping dạng thế năng F = γΦ(s') − Φ(s) thì không (Ng et al. 1999). Dự án kiểm chứng bằng Value Iteration: 0/4.676 trạng thái có chính sách tối ưu khác nhau.</dd>
+    <dt>Làm sao DQN dọn được phòng chưa từng thấy?</dt>
+    <dd>Nhờ quan sát lấy robot làm tâm: robot luôn ở giữa ảnh nên quy tắc cục bộ ("ô bẩn bên trái thì đi trái") dùng chung cho mọi vị trí và mọi phòng; và nhờ huấn luyện trên phòng mới mỗi episode. A/B cho thấy riêng thay đổi này nâng tỷ lệ dọn phòng lạ từ 60% lên 91%. E4 cho thấy càng huấn luyện trên nhiều phòng càng khái quát tốt.</dd>
+    <dt>Chọn mô hình theo tập kiểm định có phải gian lận không?</dt>
+    <dd>Không. Mô hình được chọn theo kết quả trên các phòng ngẫu nhiên sinh trong lúc huấn luyện, đã loại trừ tập test. Kết quả báo cáo đo trên 50 phòng test mà mô hình chưa từng thấy và không dùng để chọn.</dd>
+    <dt>Vì sao DQN vẫn thua greedy ở phòng nhiều vật cản?</dt>
+    <dd>Phòng 30% vật cản có hình dạng rất đa dạng, ô bẩn còn lại bị chia cắt; chính sách tất định đôi khi lặp vòng ở vùng đã dọn. Cần nhiều dữ liệu hơn, hoặc kết hợp chuyển sang greedy khi phát hiện lặp.</dd>
+    <dt>Vì sao γ = 0,99?</dt>
+    <dd>Robot cần nhìn trước nhiều bước (dọn 52 ô cần ít nhất 51 bước); γ nhỏ sẽ làm phần thưởng hoàn thành ở xa gần như bị bỏ qua. γ &lt; 1 vẫn giữ tổng phần thưởng hữu hạn và ưu tiên dọn sớm.</dd>
+  </dl>
+</section>
+
+<section id="tham-khao">
+  <h2><span class="num">12</span>Tài liệu tham khảo</h2>
+  <ul>
+    <li>Sutton, R. S., &amp; Barto, A. G. (2018). <em>Reinforcement Learning: An Introduction</em> (2nd ed.). MIT Press. Mục 3, 4.4, 6.5, 9, 11.3, 16.5, 17.3–17.4.</li>
+    <li>Mnih, V. et al. (2015). Human-level control through deep reinforcement learning. <em>Nature</em>, 518.</li>
+    <li>Ng, A. Y., Harada, D., &amp; Russell, S. (1999). Policy invariance under reward transformations. <em>ICML</em>.</li>
+    <li>Galceran, E., &amp; Carreras, M. (2013). A survey on coverage path planning for robotics. <em>Robotics and Autonomous Systems</em>.</li>
+    <li>Tài liệu Gymnasium và PyTorch.</li>
+  </ul>
+</section>
+
+<footer>Báo cáo sinh từ kết quả thật trong thư mục <code>results/</code> của dự án; mỗi thư mục kết quả có <code>config.json</code> ghi siêu tham số, seed, commit git và phiên bản thư viện. Code viết bằng Claude Code theo <code>IMPLEMENTATION_PLAN.md</code>, mọi thuật toán đối chiếu với pseudocode Sutton &amp; Barto và được kiểm chứng bằng test.</footer>
+</main>
+</div>

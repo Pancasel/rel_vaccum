@@ -1,0 +1,78 @@
+{
+  "config": {
+    "args": {
+      "map": null,
+      "random_maps": [
+        "8",
+        "8",
+        "0.15"
+      ],
+      "n_train_maps": 0,
+      "start": [
+        "random"
+      ],
+      "hide_cleaned": false,
+      "reward": "dense",
+      "timesteps": 2000000,
+      "learning_rate": 0.00025,
+      "target_update": 500,
+      "buffer_size": 100000,
+      "eval_every": 50000,
+      "eval_episodes": 50,
+      "device": "cuda",
+      "action_mask": true,
+      "egocentric": true,
+      "shaping_coef": null,
+      "n_envs": 16,
+      "batch_size": 256,
+      "keep_best": true,
+      "train_freq": 16,
+      "checkpoints": [
+        0,
+        100000,
+        500000,
+        2000000
+      ],
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "out": "results/deep",
+      "quick": false,
+      "workers": 3
+    },
+    "spec": {
+      "reward": "dense",
+      "hide": false,
+      "start": null,
+      "action_mask": true,
+      "egocentric": true,
+      "shaping_coef": null,
+      "map": null,
+      "random": [
+        8,
+        8,
+        0.15
+      ]
+    },
+    "n_test_maps": 50,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "timesteps": 2000000
+  },
+  "meta": {
+    "timestamp": "2026-10-17T17:20:33",
+    "git_commit": "1e183f6456cfa1305de4608740331e7ed144ffac",
+    "python": "3.13.9",
+    "numpy": "2.5.4",
+    "torch": "2.14.1+cu130"
+  }
+}

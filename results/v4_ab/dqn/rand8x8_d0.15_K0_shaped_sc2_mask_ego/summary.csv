@@ -1,0 +1,2 @@
+n_seeds,coverage_mean_avg,coverage_mean_sd,success_rate_avg,success_rate_sd,steps_mean_avg,steps_mean_sd,steps_to_full_mean_avg,steps_to_full_mean_sd,redundancy_mean_avg,redundancy_mean_sd,collisions_mean_avg,collisions_mean_sd
+2,0.8914814814814814,0.07751985453008069,0.33,0.18384776310850237,172.38,24.23962045907485,83.75652173913043,0.22135516628449195,0.6520308564450044,0.09076041812895622,0.0,0.0
