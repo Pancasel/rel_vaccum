@@ -1,5 +1,7 @@
 # CHANGELOG_DESIGN.md
 
+> **Lưu ý:** tên file/hàm/thư mục trong tài liệu này là tên **tại thời điểm lập kế hoạch/ghi nhật ký** (vd. `env/`, `VacuumEnv`, `run_deep`). Dự án đã đổi sang tên tường minh; xem bảng đổi tên ở [TU_DIEN_KY_HIEU.md](TU_DIEN_KY_HIEU.md) mục 7.
+
 Nhật ký thay đổi thiết kế so với `PLAN_rel.md` / `IMPLEMENTATION_PLAN.md`. Mỗi mục có đề xuất dòng cho bảng B8 của `PLAN_rel.md` (nhóm tự chép sang).
 
 ## 2026-10-17 — T1.2: chốt phạm vi model

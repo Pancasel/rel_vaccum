@@ -104,7 +104,7 @@ Bố cục ghi bằng sơ đồ chữ. "Hình:" là đường dẫn file trong t
 **Slide 4. Môi trường: căn phòng là một lưới ô**
 - Hình: `results/demo/compare_obstacle_4x4.png` (cắt lấy một ô) hoặc chụp một khung GIF.
 - Chú thích màu: xám = sàn chưa dọn, xanh = đã dọn, đen = đồ đạc, đỏ = robot.
-- 2 dòng: tự viết theo chuẩn Gymnasium; một hàm `transition()` duy nhất dùng chung cho môi trường và đáp án tối ưu.
+- 2 dòng: tự viết theo chuẩn Gymnasium; một hàm `compute_transition()` duy nhất dùng chung cho môi trường và đáp án tối ưu.
 
 **Slide 5. MDP của robot hút bụi**
 - Bảng 5 hàng: State, Action, Reward, Kết thúc, γ (lấy từ mục 3 của báo cáo).
@@ -236,9 +236,9 @@ Hình vẽ bằng matplotlib có tiêu đề riêng ở trên. Khi đặt vào s
 | Người | Slide | Cần đọc kỹ |
 |---|---|---|
 | D | 1–3, 16–17 | E1, E2, E4 trong báo cáo; Phần A của plan |
-| A | 4–6 | `env/vacuum_env.py`, mục 4 báo cáo |
-| B | 7–8, 10–11 | `tabular/q_learning.py`, Value Iteration, mục 8.2–8.3 |
-| C | 9, 12–15, 18 | `deep/dqn.py` (bảng đối chiếu đầu file), mục 5.4–5.5, 8.6–8.9 |
+| A | 4–6 | `environment/vacuum_cleaning_env.py`, mục 4 báo cáo |
+| B | 7–8, 10–11 | `agents/tabular/q_learning_agent.py`, Value Iteration, mục 8.2–8.3 |
+| C | 9, 12–15, 18 | `agents/deep_q_network/deep_q_network_settings.py` (bảng đối chiếu đầu file), mục 5.4–5.5, 8.6–8.9 |
 
 Mỗi người tập trả lời 2 câu ở mục 11 của báo cáo ("Chuẩn bị vấn đáp") liên quan tới phần mình.
 

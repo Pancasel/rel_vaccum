@@ -1,5 +1,7 @@
 # IMPLEMENTATION_PLAN.md — Detailed implementation spec for the coding agent
 
+> **Lưu ý:** tên file/hàm/thư mục trong tài liệu này là tên **tại thời điểm lập kế hoạch/ghi nhật ký** (vd. `env/`, `VacuumEnv`, `run_deep`). Dự án đã đổi sang tên tường minh; xem bảng đổi tên ở [TU_DIEN_KY_HIEU.md](TU_DIEN_KY_HIEU.md) mục 7.
+
 > This file **expands** `PLAN_rel.md` (Parts B, C, D, E) into a spec precise enough that a coding agent (Claude Code) can build the whole project **without guessing**.
 >
 > - `PLAN_rel.md` (Vietnamese) = **what and why**: motivation, scope, MDP, roadmap, submission.

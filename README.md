@@ -35,7 +35,7 @@ v2 14% diện tích → v3 (action masking) 37% → **v4 (quan sát lấy robot 
 - **Ứng dụng:** robot hút bụi / lau sàn / máy cắt cỏ cần đi qua mọi ô của mặt bằng với quãng đường
   ngắn nhất (Coverage Path Planning). Tìm đường đi qua mọi ô ngắn nhất gần với bài toán đường đi
   Hamilton (NP-khó), nên không có công thức nhanh cho bản đồ lớn.
-- **Môi trường** (`env/vacuum_env.py`, chuẩn Gymnasium): căn phòng là lưới `H x W`, ô `0` là sàn, ô `1`
+- **Môi trường** (`environment/vacuum_cleaning_env.py`, chuẩn Gymnasium): căn phòng là lưới `H x W`, ô `0` là sàn, ô `1`
   là đồ đạc/tường. Robot đi lên/xuống/trái/phải một ô mỗi bước; ô đi qua thành "đã dọn".
 
 | Thành phần MDP | Định nghĩa |
@@ -53,12 +53,12 @@ tương lai khác nhau; bỏ nó đi là mất tính Markov (Sutton & Barto 2018
 
 | Vai trò | Phương pháp | Giáo trình / nguồn | File |
 |---|---|---|---|
-| **Model chính** | Q-learning dạng bảng | Sutton & Barto 6.5 | `tabular/q_learning.py` |
-| **Mở rộng của model chính** | DQN = Q-learning với mạng CNN thay bảng, replay buffer, target network | S&B 9, 11.3, 16.5; Mnih et al. 2015 | `deep/dqn.py` |
-| Đáp án tối ưu (không học) | Value Iteration trên đồ thị trạng thái đạt tới được | S&B 4.4 | `tabular/value_iteration.py` |
-| Baseline (không học) | đi ngẫu nhiên, zigzag, tham lam tới ô bẩn gần nhất | — | `baselines/` |
+| **Model chính** | Q-learning dạng bảng | Sutton & Barto 6.5 | `agents/tabular/q_learning_agent.py` |
+| **Mở rộng của model chính** | DQN = Q-learning với mạng CNN thay bảng, replay buffer, target network | S&B 9, 11.3, 16.5; Mnih et al. 2015 | `agents/deep_q_network/` |
+| Đáp án tối ưu (không học) | Value Iteration trên đồ thị trạng thái đạt tới được | S&B 4.4 | `agents/tabular/value_iteration.py` |
+| Baseline (không học) | đi ngẫu nhiên, zigzag, tham lam tới ô bẩn gần nhất | — | `agents/baselines/` |
 
-Đầu file `deep/dqn.py` có bảng đối chiếu từng dòng giữa Q-learning dạng bảng và DQN.
+Đầu file `agents/deep_q_network/deep_q_network_settings.py` có bảng đối chiếu từng dòng giữa Q-learning dạng bảng và DQN.
 
 ## 3. Cài đặt
 
@@ -106,23 +106,23 @@ Hoặc từng thí nghiệm:
 |---|---|---|---|
 | Baseline | `python -m experiments.run_baselines` | `results/baselines/summary.csv` | < 1 phút |
 | Đáp án tối ưu (VI) | `python -m experiments.run_value_iteration` | `results/vi/*_summary.csv` | < 1 phút |
-| Q-learning | `python -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --workers 5` | `results/tabular/figures/tabular_learning_curve_obstacle_4x4_s00.png`, `q_convergence_obstacle_4x4_s00.png` | ~3 phút |
+| Q-learning | `python -m experiments.run_tabular_q_learning --map obstacle_4x4 --start 0 0 --workers 5` | `results/tabular/figures/tabular_learning_curve_obstacle_4x4_s00.png`, `q_convergence_obstacle_4x4_s00.png` | ~3 phút |
 | E7 + giới hạn tabular | `python -m experiments.run_state_explosion --workers 4` | `results/figures/state_explosion.png`, `tabular_scaling.png` | ~16 phút |
-| E1 tính Markov | `python -m experiments.run_ablation --exp markov --workers 5` | `results/ablation/figures/e1_markov_obstacle_4x4.png`, GIF | ~3 phút |
-| E2 thiết kế reward | `python -m experiments.run_ablation --exp reward --workers 5` | `results/ablation/figures/e2_reward_curves_obstacle_4x4.png`, GIF reward hacking | ~5 phút |
-| DQN 3 bậc | `python -m experiments.run_deep --map obstacle_4x4 --timesteps 200000 --workers 5` (và `empty_3x3`, `furniture_8x8`) | `results/deep/dqn/*/summary.csv`, `results/deep/figures/` | 10–60 phút |
-| DQN v4 phòng ngẫu nhiên | `python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --eval-every 50000 --eval-episodes 50 --workers 3` | `results/deep/dqn/rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16/` | ~1 giờ (GPU) |
+| E1 tính Markov | `python -m experiments.run_markov_and_reward_ablation --exp markov --workers 5` | `results/ablation/figures/e1_markov_obstacle_4x4.png`, GIF | ~3 phút |
+| E2 thiết kế reward | `python -m experiments.run_markov_and_reward_ablation --exp reward --workers 5` | `results/ablation/figures/e2_reward_curves_obstacle_4x4.png`, GIF reward hacking | ~5 phút |
+| DQN 3 bậc | `python -m experiments.run_deep_q_network --map obstacle_4x4 --timesteps 200000 --workers 5` (và `empty_3x3`, `furniture_8x8`) | `results/deep/dqn/*/summary.csv`, `results/deep/figures/` | 10–60 phút |
+| DQN v4 phòng ngẫu nhiên | `python -m experiments.run_deep_q_network --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --eval-every 50000 --eval-episodes 50 --workers 3` | `results/deep/dqn/rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16/` | ~1 giờ (GPU) |
 | E3 mật độ vật cản (v4) | `python -m experiments.run_generalization --exp density --size 8 8 --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --workers 4` | `results/generalization/figures/e3_density_8x8_mask_ego_ne16_bs256_tf16.png` | ~1,7 giờ (GPU) |
 | E4 khái quát hóa (v4) | `python -m experiments.run_generalization --exp generalization --timesteps 2000000 --n-envs 16 --batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best --workers 4` | `results/generalization/figures/e4_generalization_6x6_mask_ego_ne16_bs256_tf16.png` | ~1,5 giờ (GPU) |
-| E6 khoảng cách tối ưu | `python -m experiments.run_optimality --workers 5` | `results/optimality/e6_optimality_gap.md` | ~30 phút |
-| Demo | `python -m experiments.make_demo` | `results/demo/*.gif`, `demo_summary.md` | ~1 phút |
+| E6 khoảng cách tối ưu | `python -m experiments.run_optimality_gap --workers 5` | `results/optimality/e6_optimality_gap.md` | ~30 phút |
+| Demo | `python -m experiments.make_demo_gifs` | `results/demo/*.gif`, `demo_summary.md` | ~1 phút |
 
 Mọi script có `--help`, `--seeds`, `--quick`, `--out`; mỗi thư mục kết quả có `config.json` ghi siêu tham
 số, seed, commit git và phiên bản thư viện.
 
 ## 6. Demo
 
-`python -m experiments.make_demo` tạo trong `results/demo/`:
+`python -m experiments.make_demo_gifs` tạo trong `results/demo/`:
 
 - `compare_furniture_8x8.gif` — random / zigzag / greedy BFS / DQN đua trên cùng phòng 8×8.
 - `compare_obstacle_4x4.gif` — thêm Q-learning và đường tối ưu của Value Iteration.
@@ -139,15 +139,18 @@ python -c "from env.render import demo_random_gif; demo_random_gif('furniture_8x
 
 ## 7. Cấu trúc thư mục
 
+Mỗi file một việc; danh sách từng file ở [docs/CAU_TRUC_THU_MUC.md](docs/CAU_TRUC_THU_MUC.md), giải nghĩa mã và viết tắt (D-xx, E1..E7, γ, ε...) ở [docs/TU_DIEN_KY_HIEU.md](docs/TU_DIEN_KY_HIEU.md).
+
 ```
-env/          môi trường: bản đồ, động lực học (transition thuần), render
-baselines/    random_walk, zigzag, greedy_bfs (giao diện Agent chung)
-tabular/      đồ thị trạng thái, Value Iteration, Q-learning
-deep/         CNN, replay buffer, DQN
-experiments/  đánh giá, các script thí nghiệm, vẽ hình, demo, reproduce_all
-tests/        pytest (đơn vị + chạy thử toàn bộ luồng)
-results/      CSV, hình, GIF (mô hình .pt/.pkl không commit)
+environment/    căn phòng, luật chơi (transition thuần), hai lớp môi trường, rendering/ (ảnh, GIF)
+agents/         baselines/ (random_walk, zigzag, greedy), tabular/ (đồ thị trạng thái, Value Iteration,
+                Q-learning), deep_q_network/ (CNN, replay buffer, vòng huấn luyện DQN)
+evaluation/     chạy episode, tổng hợp chỉ số, đáp án tối ưu để so sánh
+experiments/    các script thí nghiệm; shared/ (tham số chung, tên thư mục kết quả), plotting/ (vẽ hình)
 project_utils/  đường dẫn, seed, ghi file kết quả
+tests/          pytest, chia thư mục theo package (đơn vị + chạy thử toàn bộ luồng)
+docs/           kế hoạch, nhật ký thiết kế, báo cáo HTML, CAU_TRUC_THU_MUC.md, TU_DIEN_KY_HIEU.md
+results/        CSV, hình, GIF (mô hình .pt/.pkl không commit)
 ```
 
 ## 8. Giới hạn

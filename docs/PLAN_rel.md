@@ -1,5 +1,7 @@
 # PLAN.md: Robot hút bụi phủ kín không gian bằng Học tăng cường
 
+> **Lưu ý:** tên file/hàm/thư mục trong tài liệu này là tên **tại thời điểm lập kế hoạch/ghi nhật ký** (vd. `env/`, `VacuumEnv`, `run_deep`). Dự án đã đổi sang tên tường minh; xem bảng đổi tên ở [TU_DIEN_KY_HIEU.md](TU_DIEN_KY_HIEU.md) mục 7.
+
 > Môn REL301, học kỳ FA26. Hình thức nộp: **Applications** (ứng dụng thực tế, không phải trò chơi).
 > File này là **nguồn sự thật duy nhất** của dự án. Thành viên mới đọc Phần A. Claude đọc toàn bộ file, đặc biệt Phần B và Phần C, trước khi viết bất kỳ dòng code nào.
 
