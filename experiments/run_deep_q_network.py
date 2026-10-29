@@ -49,50 +49,50 @@ def final_evaluation(agent: Any, spec: dict[str, Any], seed: int, test_maps: lis
     """Đánh giá cuối: trên tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên) hoặc trên bản đồ cố định."""
     if test_maps is not None:
         return evaluate_agent_on_rooms(agent, test_maps, 1, seed=2000 + seed, reward_settings=reward_settings_from_spec(spec))
-    n = 1 if spec.get("start") else FINAL_EVAL_EPISODES_RANDOM_START
-    return evaluate_agent(agent, functools.partial(make_environment_from_spec, spec), n, seed=2000 + seed)
+    final_episode_count = 1 if spec.get("start") else FINAL_EVAL_EPISODES_RANDOM_START
+    return evaluate_agent(agent, functools.partial(make_environment_from_spec, spec), final_episode_count, seed=2000 + seed)
 
 
-def train_one(spec: dict[str, Any], cfg: dict[str, Any], log_dir: str,
+def train_one(spec: dict[str, Any], agent_settings: dict[str, Any], log_dir: str,
               test_maps: list[np.ndarray] | None) -> dict[str, Any]:
     """Huấn luyện một seed DQN và đánh giá cuối (chạy được ở tiến trình con)."""
     factory = functools.partial(make_environment_from_spec, spec)
     observation_shape = factory().observation_space.shape
-    agent = DeepQNetworkAgent(observation_shape, DeepQNetworkSettings(**cfg))
+    agent = DeepQNetworkAgent(observation_shape, DeepQNetworkSettings(**agent_settings))
     logs = agent.train(factory, log_dir)
-    final = final_evaluation(agent, spec, cfg["seed"], test_maps)
+    final = final_evaluation(agent, spec, agent_settings["seed"], test_maps)
     save_dataframe_csv(final, Path(log_dir) / "final_eval.csv")
-    return {"seed": cfg["seed"], "eval": logs["eval"], "final": final}
+    return {"seed": agent_settings["seed"], "eval": logs["eval"], "final": final}
 
 
 def baseline_references(spec: dict[str, Any], test_maps: list[np.ndarray] | None) -> dict[str, float]:
     """Số bước tham chiếu (tối ưu nếu tính được, greedy_bfs, zigzag) cho learning curve."""
     if test_maps is None:
         return reference_step_counts(get_room_layout(spec["map"]), spec.get("start"))
-    refs = {}
+    reference_steps = {}
     for name, agent in (("greedy_bfs", GreedyNearestDirtyCellAgent()), ("zigzag", ZigzagSweepAgent())):
-        refs[name] = float(evaluate_agent_on_rooms(agent, test_maps, 1, seed=0)["steps"].mean())
-    return refs
+        reference_steps[name] = float(evaluate_agent_on_rooms(agent, test_maps, 1, seed=0)["steps"].mean())
+    return reference_steps
 
 
 def summarize_seeds(results: list[dict[str, Any]], optimum: dict[tuple[int, int], int] | None) -> pd.DataFrame:
     """Kết quả cuối, trung bình ± std qua seed."""
-    rows = []
-    for res in results:
-        final = res["final"]
-        row = {"seed": res["seed"], **summarize_metrics(final).iloc[0].to_dict()}
+    result_rows = []
+    for seed_result in results:
+        final = seed_result["final"]
+        row = {"seed": seed_result["seed"], **summarize_metrics(final).iloc[0].to_dict()}
         if optimum is not None:
             done = final[final["terminated"]]
-            opt = np.array([optimum[(r, c)] for r, c in zip(done["start_row"], done["start_col"])])
-            row["gap_pct"] = float(np.mean((done["steps"] - opt) / opt) * 100) if len(done) else float("nan")
-        rows.append(row)
-    per_seed = pd.DataFrame(rows)
-    metrics = [m for m in ("coverage_mean", "success_rate", "steps_mean", "steps_to_full_mean", "redundancy_mean",
-                           "collisions_mean", "gap_pct") if m in per_seed.columns]
+            optimal_steps = np.array([optimum[(start_row, start_column)] for start_row, start_column in zip(done["start_row"], done["start_col"])])
+            row["gap_pct"] = float(np.mean((done["steps"] - optimal_steps) / optimal_steps) * 100) if len(done) else float("nan")
+        result_rows.append(row)
+    per_seed = pd.DataFrame(result_rows)
+    metrics = [metric_name for metric_name in ("coverage_mean", "success_rate", "steps_mean", "steps_to_full_mean", "redundancy_mean",
+                           "collisions_mean", "gap_pct") if metric_name in per_seed.columns]
     out = {"n_seeds": len(per_seed)}
-    for m in metrics:
-        out[f"{m}_avg"] = per_seed[m].mean()
-        out[f"{m}_sd"] = per_seed[m].std(ddof=1) if len(per_seed) > 1 else 0.0
+    for metric_name in metrics:
+        out[f"{metric_name}_avg"] = per_seed[metric_name].mean()
+        out[f"{metric_name}_sd"] = per_seed[metric_name].std(ddof=1) if len(per_seed) > 1 else 0.0
     return pd.DataFrame([out])
 
 
@@ -127,64 +127,64 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def build_spec(args: argparse.Namespace) -> tuple[dict[str, Any], list[np.ndarray] | None]:
+def build_spec(parsed_arguments: argparse.Namespace) -> tuple[dict[str, Any], list[np.ndarray] | None]:
     """Spec môi trường + tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên)."""
-    spec: dict[str, Any] = {"reward": args.reward, "start": None,
-                            "action_mask": args.action_mask, "egocentric": args.egocentric,
-                            "shaping_coef": args.shaping_coef}
-    if args.random_maps:
-        h, w, density = int(args.random_maps[0]), int(args.random_maps[1]), float(args.random_maps[2])
-        n_test = 5 if args.quick else N_TEST_MAPS
-        test_maps = generate_distinct_rooms(h, w, density, n_test, seed=TEST_ROOMS_SEED)
-        pool = (generate_distinct_rooms(h, w, density, args.n_train_maps, seed=TRAIN_ROOM_POOL_SEED, excluded_rooms=test_maps)
-                if args.n_train_maps > 0 else None)
-        spec.update({"map": None, "random": (h, w, density), "pool": pool, "exclude": test_maps})
+    spec: dict[str, Any] = {"reward": parsed_arguments.reward, "start": None,
+                            "action_mask": parsed_arguments.action_mask, "egocentric": parsed_arguments.egocentric,
+                            "shaping_coef": parsed_arguments.shaping_coef}
+    if parsed_arguments.random_maps:
+        height, width, density = int(parsed_arguments.random_maps[0]), int(parsed_arguments.random_maps[1]), float(parsed_arguments.random_maps[2])
+        test_room_count = 5 if parsed_arguments.quick else N_TEST_MAPS
+        test_maps = generate_distinct_rooms(height, width, density, test_room_count, seed=TEST_ROOMS_SEED)
+        pool = (generate_distinct_rooms(height, width, density, parsed_arguments.n_train_maps, seed=TRAIN_ROOM_POOL_SEED, excluded_rooms=test_maps)
+                if parsed_arguments.n_train_maps > 0 else None)
+        spec.update({"map": None, "random": (height, width, density), "pool": pool, "exclude": test_maps})
         return spec, test_maps
-    spec.update({"map": args.map or "obstacle_4x4", "random": None, "start": parse_start_option(args.start)})
+    spec.update({"map": parsed_arguments.map or "obstacle_4x4", "random": None, "start": parse_start_option(parsed_arguments.start)})
     return spec, None
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
     parser = build_parser()
-    args = parser.parse_args(argv)
-    validate_reward_arguments(parser, args)
-    out = resolve_output_directory(args.out)
-    spec, test_maps = build_spec(args)
-    seeds = args.seeds[:1] if args.quick else args.seeds
-    timesteps = min(args.timesteps, 1_500) if args.quick else args.timesteps
-    evaluate_every_steps = args.eval_every or max(1, timesteps // 40)
-    checkpoints = args.checkpoints if args.checkpoints is not None else [0, timesteps // 4, timesteps]
-    tag = build_environment_folder_name(spec) + build_training_options_suffix(args)
+    parsed_arguments = parser.parse_args(argv)
+    validate_reward_arguments(parser, parsed_arguments)
+    out = resolve_output_directory(parsed_arguments.out)
+    spec, test_maps = build_spec(parsed_arguments)
+    seeds = parsed_arguments.seeds[:1] if parsed_arguments.quick else parsed_arguments.seeds
+    timesteps = min(parsed_arguments.timesteps, 1_500) if parsed_arguments.quick else parsed_arguments.timesteps
+    evaluate_every_steps = parsed_arguments.eval_every or max(1, timesteps // 40)
+    checkpoints = parsed_arguments.checkpoints if parsed_arguments.checkpoints is not None else [0, timesteps // 4, timesteps]
+    tag = build_environment_folder_name(spec) + build_training_options_suffix(parsed_arguments)
     run_dir = out / "dqn" / tag
     tasks = []
     for seed in seeds:
-        cfg = DeepQNetworkSettings(total_timesteps=timesteps, learning_rate=args.learning_rate,
-                        target_network_sync_interval_steps=args.target_update, replay_buffer_capacity=args.buffer_size,
+        agent_settings = DeepQNetworkSettings(total_timesteps=timesteps, learning_rate=parsed_arguments.learning_rate,
+                        target_network_sync_interval_steps=parsed_arguments.target_update, replay_buffer_capacity=parsed_arguments.buffer_size,
                         random_warmup_steps=min(DeepQNetworkSettings.random_warmup_steps, timesteps // 5),
-                        evaluate_every_steps=evaluate_every_steps, evaluation_episode_count=2 if args.quick else args.eval_episodes,
+                        evaluate_every_steps=evaluate_every_steps, evaluation_episode_count=2 if parsed_arguments.quick else parsed_arguments.eval_episodes,
                         log_every_steps=max(1, min(DeepQNetworkSettings.log_every_steps, timesteps // 10)),
-                        checkpoint_steps=tuple(checkpoints), device=args.device, use_action_mask=args.action_mask,
-                        use_egocentric_observation=args.egocentric, parallel_env_count=args.n_envs, batch_size=args.batch_size,
-                        steps_per_network_update=args.train_freq, keep_best_checkpoint=args.keep_best, seed=seed)
-        tasks.append({"spec": spec, "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / f"seed{seed}"),
+                        checkpoint_steps=tuple(checkpoints), device=parsed_arguments.device, use_action_mask=parsed_arguments.action_mask,
+                        use_egocentric_observation=parsed_arguments.egocentric, parallel_env_count=parsed_arguments.n_envs, batch_size=parsed_arguments.batch_size,
+                        steps_per_network_update=parsed_arguments.train_freq, keep_best_checkpoint=parsed_arguments.keep_best, seed=seed)
+        tasks.append({"spec": spec, "agent_settings": agent_settings.__dict__.copy(), "log_dir": str(run_dir / f"seed{seed}"),
                       "test_maps": test_maps})
-    results = run_tasks_in_parallel(train_one, tasks, workers=args.workers)
+    results = run_tasks_in_parallel(train_one, tasks, workers=parsed_arguments.workers)
 
     optimum = optimal_steps_for_each_start(get_room_layout(spec["map"])) if test_maps is None else None
     table = summarize_seeds(results, optimum)
     save_dataframe_csv(table, run_dir / "summary.csv")
-    refs = baseline_references(spec, test_maps)
-    eval_df = pd.concat([r["eval"].assign(seed=r["seed"], algo="dqn") for r in results], ignore_index=True)
+    reference_steps = baseline_references(spec, test_maps)
+    evaluation_table = pd.concat([seed_result["eval"].assign(seed=seed_result["seed"], algo="dqn") for seed_result in results], ignore_index=True)
     figure = plot_learning_curves(
-        eval_df, "global_step", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
+        evaluation_table, "global_step", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
                                  ("steps_mean", "số bước (chính sách tham lam)")], "algo",
         out / "figures" / f"deep_learning_curve_{tag}.png",
-        f"DQN trên {tag}", "bước huấn luyện", reference_lines={"steps_mean": refs})
-    save_config_with_metadata({"args": vars(args), "spec": {k: v for k, v in spec.items() if k not in ("pool", "exclude")},
+        f"DQN trên {tag}", "bước huấn luyện", reference_lines={"steps_mean": reference_steps})
+    save_config_with_metadata({"args": vars(parsed_arguments), "spec": {key: value for key, value in spec.items() if key not in ("pool", "exclude")},
                       "n_test_maps": len(test_maps) if test_maps else 0, "seeds": seeds, "timesteps": timesteps},
                      run_dir / "config.json")
     print(dataframe_to_markdown_table(table))
-    print("Tham chiếu số bước:", {k: round(v, 2) for k, v in refs.items()})
+    print("Tham chiếu số bước:", {k: round(v, 2) for k, v in reference_steps.items()})
     print(f"Hình: {figure}")
     return table
 

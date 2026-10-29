@@ -61,7 +61,7 @@ def train_dqn(map_name: str, timesteps: int, seed: int, log_dir: str, device: st
     agent.train(factory, log_dir)
     env = factory()
     return {"map": map_name, "seed": seed,
-            "steps": {s: run_single_episode(agent, env, seed=0, reset_options={"start": s})["steps"] for s in STARTS[map_name]}}
+            "steps": {start_cell: run_single_episode(agent, env, seed=0, reset_options={"start": start_cell})["steps"] for start_cell in STARTS[map_name]}}
 
 
 def dispatch_task(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -81,47 +81,47 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     parser.add_argument("--maps", nargs="+", default=list(STARTS), choices=list(STARTS))
     parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
     add_shared_options(parser, "results/optimality")
-    args = parser.parse_args(argv)
-    out = resolve_output_directory(args.out)
-    seeds = args.seeds[:1] if args.quick else args.seeds
-    q_eps = {m: (200 if args.quick else Q_EPISODES[m]) for m in args.maps}
-    dqn_steps = {m: (800 if args.quick else DQN_TIMESTEPS[m]) for m in args.maps}
+    parsed_arguments = parser.parse_args(argv)
+    out = resolve_output_directory(parsed_arguments.out)
+    seeds = parsed_arguments.seeds[:1] if parsed_arguments.quick else parsed_arguments.seeds
+    q_learning_episode_counts = {map_name: (200 if parsed_arguments.quick else Q_EPISODES[map_name]) for map_name in parsed_arguments.maps}
+    dqn_steps = {map_name: (800 if parsed_arguments.quick else DQN_TIMESTEPS[map_name]) for map_name in parsed_arguments.maps}
 
-    q_tasks = [{"map_name": m, "start": s, "episodes": q_eps[m], "seed": seed}
-               for m in args.maps for s in STARTS[m] for seed in seeds]
-    d_tasks = [{"map_name": m, "timesteps": dqn_steps[m], "seed": seed, "log_dir": str(out / "dqn" / m / f"seed{seed}"), "device": args.device}
-               for m in args.maps for seed in seeds]
-    results = run_tasks_in_parallel(dispatch_task, [{"kind": "q", "kwargs": t} for t in q_tasks] +
-                           [{"kind": "dqn", "kwargs": t} for t in d_tasks], workers=args.workers)
-    q_res = [r for r in results if "start" in r]
-    d_res = [r for r in results if "start" not in r]
+    q_learning_tasks = [{"map_name": map_name, "start": start_cell, "episodes": q_learning_episode_counts[map_name], "seed": seed}
+               for map_name in parsed_arguments.maps for start_cell in STARTS[map_name] for seed in seeds]
+    dqn_tasks = [{"map_name": map_name, "timesteps": dqn_steps[map_name], "seed": seed, "log_dir": str(out / "dqn" / map_name / f"seed{seed}"), "device": parsed_arguments.device}
+               for map_name in parsed_arguments.maps for seed in seeds]
+    results = run_tasks_in_parallel(dispatch_task, [{"kind": "q", "kwargs": task} for task in q_learning_tasks] +
+                           [{"kind": "dqn", "kwargs": task} for task in dqn_tasks], workers=parsed_arguments.workers)
+    q_learning_results = [task_result for task_result in results if "start" in task_result]
+    dqn_results = [task_result for task_result in results if "start" not in task_result]
 
-    rows, raw = [], []
-    for m in args.maps:
-        grid = get_room_layout(m)
+    result_rows, raw = [], []
+    for map_name in parsed_arguments.maps:
+        grid = get_room_layout(map_name)
         vi = run_value_iteration(build_state_transition_graph(grid))
         env = VacuumCleaningEnv(grid)
-        for s in STARTS[m]:
-            optimum = minimum_steps_to_clean_all(vi.graph, s)
+        for start_cell in STARTS[map_name]:
+            optimum = minimum_steps_to_clean_all(vi.graph, start_cell)
             values = {
-                "VI": [run_single_episode(ValueIterationPolicyAgent(vi), env, seed=0, reset_options={"start": s})["steps"]],
-                "Q-learning": [r["steps"] for r in q_res if r["map"] == m and r["start"] == s],
-                "DQN": [r["steps"][s] for r in d_res if r["map"] == m],
-                "greedy_bfs": [run_single_episode(GreedyNearestDirtyCellAgent(), env, seed=0, reset_options={"start": s})["steps"]],
-                "zigzag": [run_single_episode(ZigzagSweepAgent(), env, seed=0, reset_options={"start": s})["steps"]],
+                "VI": [run_single_episode(ValueIterationPolicyAgent(vi), env, seed=0, reset_options={"start": start_cell})["steps"]],
+                "Q-learning": [task_result["steps"] for task_result in q_learning_results if task_result["map"] == map_name and task_result["start"] == start_cell],
+                "DQN": [task_result["steps"][start_cell] for task_result in dqn_results if task_result["map"] == map_name],
+                "greedy_bfs": [run_single_episode(GreedyNearestDirtyCellAgent(), env, seed=0, reset_options={"start": start_cell})["steps"]],
+                "zigzag": [run_single_episode(ZigzagSweepAgent(), env, seed=0, reset_options={"start": start_cell})["steps"]],
             }
-            rows.append({"map": m, "start": str(s), "min_steps": optimum,
-                         **{name: cell(v, optimum) for name, v in values.items()}})
-            raw += [{"map": m, "start": str(s), "method": name, "steps_mean": float(np.mean(v)), "min_steps": optimum,
-                     "gap_pct": (float(np.mean(v)) - optimum) / optimum * 100, "n": len(v)}
-                    for name, v in values.items()]
-    table = pd.DataFrame(rows)
+            result_rows.append({"map": map_name, "start": str(start_cell), "min_steps": optimum,
+                         **{name: cell(step_counts, optimum) for name, step_counts in values.items()}})
+            raw += [{"map": map_name, "start": str(start_cell), "method": name, "steps_mean": float(np.mean(step_counts)), "min_steps": optimum,
+                     "gap_pct": (float(np.mean(step_counts)) - optimum) / optimum * 100, "n": len(step_counts)}
+                    for name, step_counts in values.items()]
+    table = pd.DataFrame(result_rows)
     save_dataframe_csv(pd.DataFrame(raw), out / "e6_optimality_gap.csv")
     text = (f"# E6: khoảng cách tới tối ưu (số bước, trung bình ± std qua {len(seeds)} seed, gap so với tối thiểu)\n\n"
             + dataframe_to_markdown_table(table))
     write_text_file(text, out / "e6_optimality_gap.md")
-    save_config_with_metadata({"args": vars(args), "seeds": seeds, "q_episodes": q_eps, "dqn_timesteps": dqn_steps,
-                      "starts": {k: [list(s) for s in v] for k, v in STARTS.items()}}, out / "config.json")
+    save_config_with_metadata({"args": vars(parsed_arguments), "seeds": seeds, "q_episodes": q_learning_episode_counts, "dqn_timesteps": dqn_steps,
+                      "starts": {map_name: [list(start_cell) for start_cell in start_cells] for map_name, start_cells in STARTS.items()}}, out / "config.json")
     print(text)
     return table
 

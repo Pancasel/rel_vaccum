@@ -18,7 +18,7 @@ def test_root_is_repo_root() -> None:
     from project_utils.project_paths import PROJECT_ROOT
 
     assert (PROJECT_ROOT / "docs/IMPLEMENTATION_PLAN.md").exists()
-    assert PROJECT_ROOT == Path(__file__).resolve().parents[1]
+    assert PROJECT_ROOT == Path(__file__).resolve().parents[2]
 
 
 def test_require_path_inside_project_rejects_outside(tmp_path: Path) -> None:

@@ -37,9 +37,9 @@ def _to_jsonable(value_to_convert: Any) -> Any:
     if dataclasses.is_dataclass(value_to_convert) and not isinstance(value_to_convert, type):
         return _to_jsonable(dataclasses.asdict(value_to_convert))
     if isinstance(value_to_convert, dict):
-        return {str(k): _to_jsonable(v) for k, v in value_to_convert.items()}
+        return {str(key): _to_jsonable(item) for key, item in value_to_convert.items()}
     if isinstance(value_to_convert, (list, tuple)):
-        return [_to_jsonable(v) for v in value_to_convert]
+        return [_to_jsonable(item) for item in value_to_convert]
     if isinstance(value_to_convert, Path):
         return str(value_to_convert)
     if isinstance(value_to_convert, np.generic):

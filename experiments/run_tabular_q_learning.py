@@ -56,16 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def train_one(algo: str, map_name: str, start: tuple[int, int] | None, reward: str, cfg: dict[str, Any],
+def train_one(algo: str, map_name: str, start: tuple[int, int] | None, reward: str, agent_settings: dict[str, Any],
               log_dir: str) -> dict[str, Any]:
     """Huấn luyện một (thuật toán, seed); trả log và kết quả đánh giá cuối (chạy được ở tiến trình con)."""
     factory = make_environment_factory(map_name, start=start, reward=reward)
-    agent = ALGOS[algo](get_room_layout(map_name), TabularSettings(**cfg))
+    agent = ALGOS[algo](get_room_layout(map_name), TabularSettings(**agent_settings))
     train_log, eval_log = agent.train(factory, log_dir=log_dir)
-    n_final = 1 if start is not None else FINAL_EVAL_EPISODES_RANDOM_START
-    final = evaluate_agent(agent, factory, n_final, seed=1000 + cfg["seed"], gamma=cfg["gamma"])
-    save_dataframe_csv(final, Path(log_dir) / f"seed{cfg['seed']}_final.csv")
-    return {"algo": algo, "seed": cfg["seed"], "train": train_log, "eval": eval_log, "final": final}
+    final_episode_count = 1 if start is not None else FINAL_EVAL_EPISODES_RANDOM_START
+    final = evaluate_agent(agent, factory, final_episode_count, seed=1000 + agent_settings["seed"], gamma=agent_settings["gamma"])
+    save_dataframe_csv(final, Path(log_dir) / f"seed{agent_settings['seed']}_final.csv")
+    return {"algo": algo, "seed": agent_settings["seed"], "train": train_log, "eval": eval_log, "final": final}
 
 
 def run_name(reward: str, state_mode: str) -> str:
@@ -75,16 +75,16 @@ def run_name(reward: str, state_mode: str) -> str:
 
 def summarize_runs(results: list[dict[str, Any]], optimum: dict[tuple[int, int], int] | None) -> pd.DataFrame:
     """Bảng kết quả cuối: trung bình ± std QUA SEED của số bước, coverage, tỷ lệ thành công, gap tối ưu."""
-    rows = []
-    for res in results:
-        final = res["final"].copy()
-        row = {"algo": res["algo"], "seed": res["seed"], **summarize_metrics(final).iloc[0].to_dict()}
+    result_rows = []
+    for seed_result in results:
+        final = seed_result["final"].copy()
+        row = {"algo": seed_result["algo"], "seed": seed_result["seed"], **summarize_metrics(final).iloc[0].to_dict()}
         if optimum is not None:
             done = final[final["terminated"]]
-            opt = np.array([optimum[(r, c)] for r, c in zip(done["start_row"], done["start_col"])])
-            row["gap_pct"] = float(np.mean((done["steps"] - opt) / opt) * 100) if len(done) else float("nan")
-        rows.append(row)
-    per_seed = pd.DataFrame(rows)
+            optimal_steps = np.array([optimum[(start_row, start_column)] for start_row, start_column in zip(done["start_row"], done["start_col"])])
+            row["gap_pct"] = float(np.mean((done["steps"] - optimal_steps) / optimal_steps) * 100) if len(done) else float("nan")
+        result_rows.append(row)
+    per_seed = pd.DataFrame(result_rows)
     metrics = ["coverage_mean", "steps_mean", "success_rate", "redundancy_mean"] + (
         ["gap_pct"] if optimum is not None else [])
     grouped = per_seed.groupby("algo")[metrics]
@@ -93,56 +93,56 @@ def summarize_runs(results: list[dict[str, Any]], optimum: dict[tuple[int, int],
     return table.reset_index()
 
 
-def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start: tuple[int, int] | None,
+def make_figures(results: list[dict[str, Any]], parsed_arguments: argparse.Namespace, start: tuple[int, int] | None,
                  out_fig: Path) -> list[Path]:
     """Learning curve (coverage, số bước của chính sách tham lam) và hình hội tụ max Q(s0) về V*."""
-    grid = get_room_layout(args.map)
-    eval_df = pd.concat([r["eval"].assign(seed=r["seed"], algo=r["algo"]) for r in results], ignore_index=True)
-    refs = reference_step_counts(grid, start)
-    tag = run_name(args.reward, args.state_mode)
-    name = build_fixed_room_folder_name(args.map, start)
+    grid = get_room_layout(parsed_arguments.map)
+    evaluation_table = pd.concat([seed_result["eval"].assign(seed=seed_result["seed"], algo=seed_result["algo"]) for seed_result in results], ignore_index=True)
+    reference_steps = reference_step_counts(grid, start)
+    tag = run_name(parsed_arguments.reward, parsed_arguments.state_mode)
+    name = build_fixed_room_folder_name(parsed_arguments.map, start)
     start_txt = f"xuất phát {start}" if start else "xuất phát ngẫu nhiên"
     paths = [plot_learning_curves(
-        eval_df, "episode", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
+        evaluation_table, "episode", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
                              ("steps_mean", "số bước (chính sách tham lam)")], "algo",
         out_fig / f"tabular_learning_curve_{name}{tag}.png",
-        f"{', '.join(args.algos)} trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
-        reference_lines={"steps_mean": refs})]
-    if start is not None and args.state_mode == "full":
-        optimal_start_value = optimal_value_of_start(grid, start, RewardSettings.from_name(args.reward), args.gamma)
+        f"{', '.join(parsed_arguments.algos)} trên {parsed_arguments.map} ({start_txt}, reward {parsed_arguments.reward}, state {parsed_arguments.state_mode})", "episode",
+        reference_lines={"steps_mean": reference_steps})]
+    if start is not None and parsed_arguments.state_mode == "full":
+        optimal_start_value = optimal_value_of_start(grid, start, RewardSettings.from_name(parsed_arguments.reward), parsed_arguments.gamma)
         if optimal_start_value is not None:
-            train_df = pd.concat([r["train"].assign(seed=r["seed"], algo=r["algo"]) for r in results],
+            training_table = pd.concat([seed_result["train"].assign(seed=seed_result["seed"], algo=seed_result["algo"]) for seed_result in results],
                                  ignore_index=True)
-            paths.append(plot_q_convergence(train_df, optimal_start_value, out_fig / f"q_convergence_{name}{tag}.png",
-                                            smoothing_window=max(1, args.episodes // 400)))
+            paths.append(plot_q_convergence(training_table, optimal_start_value, out_fig / f"q_convergence_{name}{tag}.png",
+                                            smoothing_window=max(1, parsed_arguments.episodes // 400)))
     return paths
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
-    args = build_parser().parse_args(argv)
-    out = resolve_output_directory(args.out)
-    start = parse_start_option(args.start)
-    seeds = args.seeds[:2] if args.quick else args.seeds
-    episodes = max(20, args.episodes // 10) if args.quick else args.episodes
-    evaluate_every_episodes = args.eval_every or max(1, episodes // 200)
-    evaluation_episode_count = args.eval_episodes or (1 if start is not None else 10)
-    run_dir = out / args.reward / args.state_mode / build_fixed_room_folder_name(args.map, start)
+    parsed_arguments = build_parser().parse_args(argv)
+    out = resolve_output_directory(parsed_arguments.out)
+    start = parse_start_option(parsed_arguments.start)
+    seeds = parsed_arguments.seeds[:2] if parsed_arguments.quick else parsed_arguments.seeds
+    episodes = max(20, parsed_arguments.episodes // 10) if parsed_arguments.quick else parsed_arguments.episodes
+    evaluate_every_episodes = parsed_arguments.eval_every or max(1, episodes // 200)
+    evaluation_episode_count = parsed_arguments.eval_episodes or (1 if start is not None else 10)
+    run_dir = out / parsed_arguments.reward / parsed_arguments.state_mode / build_fixed_room_folder_name(parsed_arguments.map, start)
     tasks = []
-    for algo in args.algos:
+    for algo in parsed_arguments.algos:
         for seed in seeds:
-            cfg = TabularSettings(episode_count=episodes, alpha=args.alpha, gamma=args.gamma, epsilon_end=args.epsilon_end,
-                                state_mode=args.state_mode, evaluate_every_episodes=evaluate_every_episodes, evaluation_episode_count=evaluation_episode_count,
-                                time_budget_minutes=args.time_budget_min,
-                                checkpoint_episodes=tuple(e for e in args.checkpoints if e <= episodes), seed=seed)
-            tasks.append({"algo": algo, "map_name": args.map, "start": start, "reward": args.reward,
-                          "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / algo / f"seed{seed}")})
-    results = run_tasks_in_parallel(train_one, tasks, workers=args.workers)
+            agent_settings = TabularSettings(episode_count=episodes, alpha=parsed_arguments.alpha, gamma=parsed_arguments.gamma, epsilon_end=parsed_arguments.epsilon_end,
+                                state_mode=parsed_arguments.state_mode, evaluate_every_episodes=evaluate_every_episodes, evaluation_episode_count=evaluation_episode_count,
+                                time_budget_minutes=parsed_arguments.time_budget_min,
+                                checkpoint_episodes=tuple(checkpoint_episode for checkpoint_episode in parsed_arguments.checkpoints if checkpoint_episode <= episodes), seed=seed)
+            tasks.append({"algo": algo, "map_name": parsed_arguments.map, "start": start, "reward": parsed_arguments.reward,
+                          "agent_settings": agent_settings.__dict__.copy(), "log_dir": str(run_dir / algo / f"seed{seed}")})
+    results = run_tasks_in_parallel(train_one, tasks, workers=parsed_arguments.workers)
 
-    optimum = optimal_steps_for_each_start(get_room_layout(args.map))
+    optimum = optimal_steps_for_each_start(get_room_layout(parsed_arguments.map))
     table = summarize_runs(results, optimum)
     save_dataframe_csv(table, run_dir / "summary.csv")
-    figures = make_figures(results, args, start, out / "figures")
-    save_config_with_metadata({"args": vars(args), "episodes": episodes, "seeds": seeds, "eval_every": evaluate_every_episodes,
+    figures = make_figures(results, parsed_arguments, start, out / "figures")
+    save_config_with_metadata({"args": vars(parsed_arguments), "episodes": episodes, "seeds": seeds, "eval_every": evaluate_every_episodes,
                       "eval_episodes": evaluation_episode_count, "start": start}, run_dir / "config.json")
     print(dataframe_to_markdown_table(table))
     for path in figures:

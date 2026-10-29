@@ -34,37 +34,37 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run(args: argparse.Namespace) -> pd.DataFrame:
+def run(parsed_arguments: argparse.Namespace) -> pd.DataFrame:
     """Chạy toàn bộ tổ hợp map × agent × seed, trả bảng tóm tắt."""
-    out = resolve_output_directory(args.out)
-    seeds = args.seeds[:1] if args.quick else args.seeds
-    episodes = min(args.episodes, 3) if args.quick else args.episodes
-    start = parse_start_option(args.start)
+    out = resolve_output_directory(parsed_arguments.out)
+    seeds = parsed_arguments.seeds[:1] if parsed_arguments.quick else parsed_arguments.seeds
+    episodes = min(parsed_arguments.episodes, 3) if parsed_arguments.quick else parsed_arguments.episodes
+    start = parse_start_option(parsed_arguments.start)
     all_rows = []
-    for map_name in args.maps:
+    for map_name in parsed_arguments.maps:
         factory = make_environment_factory(map_name, start=start)
-        for agent_name in args.agents:
+        for agent_name in parsed_arguments.agents:
             for seed in seeds:
-                df = evaluate_agent(create_baseline_agent(agent_name, seed=seed), factory, episodes, seed=seed)
-                save_dataframe_csv(df, out / map_name / agent_name / f"seed{seed}.csv")
-                df.insert(0, "seed", seed)
-                df.insert(0, "agent", agent_name)
-                df.insert(0, "map", map_name)
-                all_rows.append(df)
+                episode_table = evaluate_agent(create_baseline_agent(agent_name, seed=seed), factory, episodes, seed=seed)
+                save_dataframe_csv(episode_table, out / map_name / agent_name / f"seed{seed}.csv")
+                episode_table.insert(0, "seed", seed)
+                episode_table.insert(0, "agent", agent_name)
+                episode_table.insert(0, "map", map_name)
+                all_rows.append(episode_table)
     full = pd.concat(all_rows, ignore_index=True)
     summary = summarize_metrics(full, ["map", "agent"])
     save_dataframe_csv(summary, out / "summary.csv")
-    save_config_with_metadata({"maps": args.maps, "agents": args.agents, "seeds": seeds, "episodes": episodes,
+    save_config_with_metadata({"maps": parsed_arguments.maps, "agents": parsed_arguments.agents, "seeds": seeds, "episodes": episodes,
                       "start": start}, out / "config.json")
     return summary
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
-    args = build_parser().parse_args(argv)
-    summary = run(args)
-    cols = ["map", "agent", "n", "success_rate", "coverage_mean", "steps_mean", "steps_std",
+    parsed_arguments = build_parser().parse_args(argv)
+    summary = run(parsed_arguments)
+    summary_columns = ["map", "agent", "n", "success_rate", "coverage_mean", "steps_mean", "steps_std",
             "redundancy_mean", "collisions_mean"]
-    print(dataframe_to_markdown_table(summary[cols]))
+    print(dataframe_to_markdown_table(summary[summary_columns]))
     return summary
 
 

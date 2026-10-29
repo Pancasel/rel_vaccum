@@ -47,12 +47,12 @@ def solve_map(map_name: str, gamma: float) -> tuple[pd.DataFrame, dict, object]:
     result = run_value_iteration(graph, gamma=gamma)
     runtime = time.monotonic() - t0
     env = VacuumCleaningEnv(grid)
-    rows = []
+    result_rows = []
     for start in list_free_cells(grid):
         rollout = follow_optimal_policy(result, start, max_steps=env.max_steps)
         greedy = run_single_episode(GreedyNearestDirtyCellAgent(), env, seed=0, gamma=gamma, reset_options={"start": start})
         zigzag = run_single_episode(ZigzagSweepAgent(), env, seed=0, gamma=gamma, reset_options={"start": start})
-        rows.append({
+        result_rows.append({
             "start_row": start[0], "start_col": start[1],
             "v_star": result.optimal_value_of_start(start),
             "min_steps": minimum_steps_to_clean_all(graph, start),
@@ -63,16 +63,16 @@ def solve_map(map_name: str, gamma: float) -> tuple[pd.DataFrame, dict, object]:
         })
     meta = {"map": map_name, "n_states": graph.state_count, "n_iterations": result.iteration_count,
             "runtime_s": round(runtime, 3), "gamma": gamma}
-    return pd.DataFrame(rows), meta, result
+    return pd.DataFrame(result_rows), meta, result
 
 
 def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
-    args = build_parser().parse_args(argv)
-    out = resolve_output_directory(args.out)
-    maps = ["empty_3x3"] if args.quick else args.maps
+    parsed_arguments = build_parser().parse_args(argv)
+    out = resolve_output_directory(parsed_arguments.out)
+    maps = ["empty_3x3"] if parsed_arguments.quick else parsed_arguments.maps
     tables: dict[str, pd.DataFrame] = {}
     for map_name in maps:
-        table, meta, result = solve_map(map_name, args.gamma)
+        table, meta, result = solve_map(map_name, parsed_arguments.gamma)
         save_dataframe_csv(table, out / f"{map_name}_summary.csv")
         (out / f"{map_name}_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         save_value_iteration_result(result, out / f"{map_name}_vi.pkl")
@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
         print(f"\n## {map_name}: {meta['n_states']} trạng thái, {meta['n_iterations']} vòng lặp, "
               f"{meta['runtime_s']} s")
         print(dataframe_to_markdown_table(table))
-    save_config_with_metadata({"maps": maps, "gamma": args.gamma}, out / "config.json")
+    save_config_with_metadata({"maps": maps, "gamma": parsed_arguments.gamma}, out / "config.json")
     return tables
 
 

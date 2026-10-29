@@ -70,10 +70,10 @@ STEPS: list[tuple[str, str, list[str], bool]] = [
 DEVICE_MODULES = {"experiments.run_deep_q_network", "experiments.run_generalization", "experiments.run_optimality_gap"}
 
 
-def build_command(name: str, module: str, args: list[str], takes_workers: bool, quick: bool,
+def build_command(name: str, module: str, parsed_arguments: list[str], takes_workers: bool, quick: bool,
                   workers: int, device: str = "auto") -> list[str]:
     """Dòng lệnh cho một bước; chế độ quick ghi vào results/_quick/<tên bước>."""
-    cmd = [sys.executable, "-m", module, *args]
+    cmd = [sys.executable, "-m", module, *parsed_arguments]
     if quick:
         cmd += ["--quick", "--out", f"results/_quick/{name}"]
     if takes_workers and workers > 1:
@@ -90,11 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--full", action="store_true", help="chạy đầy đủ như báo cáo")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--device", default="auto", help="thiết bị cho DQN: auto | cpu | cuda")
-    parser.add_argument("--only", nargs="+", choices=[s[0] for s in STEPS], help="chỉ chạy các bước này")
-    args = parser.parse_args(argv)
-    selected = [s for s in STEPS if not args.only or s[0] in args.only]
+    parser.add_argument("--only", nargs="+", choices=[step[0] for step in STEPS], help="chỉ chạy các bước này")
+    parsed_arguments = parser.parse_args(argv)
+    selected = [step for step in STEPS if not parsed_arguments.only or step[0] in parsed_arguments.only]
     for i, (name, module, step_args, takes_workers) in enumerate(selected, 1):
-        cmd = build_command(name, module, step_args, takes_workers, args.quick, args.workers, args.device)
+        cmd = build_command(name, module, step_args, takes_workers, parsed_arguments.quick, parsed_arguments.workers, parsed_arguments.device)
         print(f"\n[{i}/{len(selected)}] {name}: {' '.join(cmd[1:])}", flush=True)
         t0 = time.monotonic()
         code = subprocess.run(cmd, cwd=PROJECT_ROOT).returncode

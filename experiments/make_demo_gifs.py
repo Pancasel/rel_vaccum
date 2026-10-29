@@ -62,7 +62,7 @@ def rollout(agent: Any, env: VacuumCleaningEnv, title: str, seed: int, start: tu
     """Chạy một episode, trả các khung hình có chú thích và số liệu cuối."""
     if hasattr(agent, "reset"):
         agent.reset()
-    obs, info = env.reset(seed=seed, options={"start": start} if start else None)
+    observation, info = env.reset(seed=seed, options={"start": start} if start else None)
     from environment.rendering.frame_drawing import draw_rgb_frame
 
     trail = [info["position"]]
@@ -77,13 +77,13 @@ def rollout(agent: Any, env: VacuumCleaningEnv, title: str, seed: int, start: tu
     frames = [frame(info)]
     terminated = truncated = False
     while not (terminated or truncated):
-        obs, _, terminated, truncated, info = env.step(agent.act(obs, info))
+        observation, _, terminated, truncated, info = env.step(agent.act(observation, info))
         trail.append(info["position"])
         frames.append(frame(info))
     frames[-1] = frame(info, " ✓ xong" if terminated else " ✗ hết giờ")
-    stats = {"agent": title, "steps": info["steps"], "coverage": info["coverage"], "revisits": info["n_revisit"],
+    rollout_stats = {"agent": title, "steps": info["steps"], "coverage": info["coverage"], "revisits": info["n_revisit"],
              "collisions": info["n_collisions"], "finished": terminated}
-    return frames, stats
+    return frames, rollout_stats
 
 
 def synchronized(frame_lists: list[list[np.ndarray]]) -> list[np.ndarray]:
@@ -91,27 +91,27 @@ def synchronized(frame_lists: list[list[np.ndarray]]) -> list[np.ndarray]:
 
     Nếu quá dài thì lấy mẫu đều, luôn giữ khung cuối.
     """
-    n = max(len(f) for f in frame_lists)
-    indices = list(range(n))
-    if n > MAX_GIF_FRAMES:
-        indices = sorted(set(np.linspace(0, n - 1, MAX_GIF_FRAMES).round().astype(int).tolist()))
-    return [place_frames_side_by_side([f[min(t, len(f) - 1)] for f in frame_lists]) for t in indices]
+    frame_count = max(len(frame_list) for frame_list in frame_lists)
+    indices = list(range(frame_count))
+    if frame_count > MAX_GIF_FRAMES:
+        indices = sorted(set(np.linspace(0, frame_count - 1, MAX_GIF_FRAMES).round().astype(int).tolist()))
+    return [place_frames_side_by_side([frame_list[min(frame_index, len(frame_list) - 1)] for frame_list in frame_lists]) for frame_index in indices]
 
 
 def race(agents: dict[str, Any], grid: np.ndarray, start: tuple[int, int] | None, seed: int, out_path: Path,
          cell_pixel_size: int = 32) -> list[dict[str, Any]]:
     """"Cuộc đua" nhiều robot trên cùng căn phòng; lưu GIF và ảnh khung cuối."""
-    frame_lists, stats = [], []
+    frame_lists, rollout_stats = [], []
     for name, agent in agents.items():
-        frames, s = rollout(agent, VacuumCleaningEnv(grid), name, seed, start, cell_pixel_size)
+        frames, agent_stats = rollout(agent, VacuumCleaningEnv(grid), name, seed, start, cell_pixel_size)
         frame_lists.append(frames)
-        stats.append(s)
+        rollout_stats.append(agent_stats)
     frames = synchronized(frame_lists)
     save_gif(frames, out_path, frames_per_second=FPS, last_frame_hold=FPS * 2)
     from PIL import Image
 
     Image.fromarray(frames[-1]).save(out_path.with_suffix(".png"))
-    return stats
+    return rollout_stats
 
 
 def load_qtable(checkpoint_dir: Path, name: str) -> TabularAgentBase:
@@ -134,23 +134,23 @@ def train_quick_models(model_dir: Path, map_name: str) -> dict[str, Path]:
     agent = QLearningAgent(get_room_layout(SMALL_MAP), TabularSettings(episode_count=300, evaluate_every_episodes=150, evaluation_episode_count=1,
                                                              checkpoint_episodes=(0, 50, 150)))
     agent.train(make_environment_factory(SMALL_MAP, start=SMALL_START), log_dir=q_dir)
-    cfg = dict(total_timesteps=600, random_warmup_steps=100, batch_size=16, replay_buffer_capacity=1000, evaluate_every_steps=600,
+    agent_settings = dict(total_timesteps=600, random_warmup_steps=100, batch_size=16, replay_buffer_capacity=1000, evaluate_every_steps=600,
                evaluation_episode_count=1, log_every_steps=100)
     grid = get_room_layout(map_name)
-    dqn_map = DeepQNetworkAgent((3, *grid.shape), DeepQNetworkSettings(checkpoint_steps=(0, 150), **cfg))
+    dqn_map = DeepQNetworkAgent((3, *grid.shape), DeepQNetworkSettings(checkpoint_steps=(0, 150), **agent_settings))
     dqn_map.train(make_environment_factory(map_name), model_dir / "dqn_map")
-    dqn_rand = DeepQNetworkAgent((3, 8, 8), DeepQNetworkSettings(use_action_mask=True, use_egocentric_observation=True, **cfg))
+    dqn_rand = DeepQNetworkAgent((3, 8, 8), DeepQNetworkSettings(use_action_mask=True, use_egocentric_observation=True, **agent_settings))
     dqn_rand.train(functools.partial(RandomRoomVacuumCleaningEnv, 8, 8, 0.15), model_dir / "dqn_random")
     return {"qtable": q_dir / "checkpoints", "dqn_map": model_dir / "dqn_map", "dqn_random": model_dir / "dqn_random"}
 
 
 def checkpoint_sequence(directory: Path, pattern: str, label: str) -> list[tuple[str, Path]]:
     """Các checkpoint theo thứ tự (ep0, ep1000, ..., final) kèm nhãn hiển thị."""
-    def number(p: Path) -> int:
-        return int("".join(ch for ch in p.stem if ch.isdigit()) or -1)
+    def number(path: Path) -> int:
+        return int("".join(ch for ch in path.stem if ch.isdigit()) or -1)
 
     paths = sorted(directory.glob(pattern), key=number)
-    return [(f"{label} {number(p)}", p) for p in paths]
+    return [(f"{label} {number(path)}", path) for path in paths]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -169,54 +169,54 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
-    args = build_parser().parse_args(argv)
-    out = resolve_output_directory(args.out)
-    what = {"compare", "progress", "heatmap", "unseen"} if "all" in args.what else set(args.what)
-    if args.quick:
-        paths = train_quick_models(out / "_quick_models", args.map)
+    parsed_arguments = build_parser().parse_args(argv)
+    out = resolve_output_directory(parsed_arguments.out)
+    what = {"compare", "progress", "heatmap", "unseen"} if "all" in parsed_arguments.what else set(parsed_arguments.what)
+    if parsed_arguments.quick:
+        paths = train_quick_models(out / "_quick_models", parsed_arguments.map)
     else:
-        paths = {"qtable": PROJECT_ROOT / args.qtable_dir, "dqn_map": PROJECT_ROOT / args.dqn_map_dir,
-                 "dqn_random": PROJECT_ROOT / args.dqn_random_dir}
-    grid, start = get_room_layout(args.map), tuple(args.start)
-    hint_map = f"python -m experiments.run_deep_q_network --map {args.map} --timesteps 500000"
-    rows: list[dict[str, Any]] = []
+        paths = {"qtable": PROJECT_ROOT / parsed_arguments.qtable_dir, "dqn_map": PROJECT_ROOT / parsed_arguments.dqn_map_dir,
+                 "dqn_random": PROJECT_ROOT / parsed_arguments.dqn_random_dir}
+    grid, start = get_room_layout(parsed_arguments.map), tuple(parsed_arguments.start)
+    hint_map = f"python -m experiments.run_deep_q_network --map {parsed_arguments.map} --timesteps 500000"
+    summary_rows: list[dict[str, Any]] = []
 
     if "compare" in what:
         dqn = load_dqn(paths["dqn_map"] / "model.pt", hint_map)
-        agents = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagSweepAgent(),
+        agents = {"random_walk": RandomWalkAgent(seed=parsed_arguments.seed), "zigzag": ZigzagSweepAgent(),
                   "greedy_bfs": GreedyNearestDirtyCellAgent(), "DQN": dqn}
-        rows += [{"demo": f"compare_{args.map}", **s} for s in
-                 race(agents, grid, start, args.seed, out / f"compare_{args.map}.gif")]
+        summary_rows += [{"demo": f"compare_{parsed_arguments.map}", **agent_stats} for agent_stats in
+                 race(agents, grid, start, parsed_arguments.seed, out / f"compare_{parsed_arguments.map}.gif")]
         small = get_room_layout(SMALL_MAP)
         vi = run_value_iteration(build_state_transition_graph(small))
-        agents_small = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagSweepAgent(),
+        agents_small = {"random_walk": RandomWalkAgent(seed=parsed_arguments.seed), "zigzag": ZigzagSweepAgent(),
                         "greedy_bfs": GreedyNearestDirtyCellAgent(), "Q-learning": load_qtable(paths["qtable"], "final.pkl"),
                         "tối ưu (VI)": ValueIterationPolicyAgent(vi)}
-        rows += [{"demo": f"compare_{SMALL_MAP}", **s} for s in
-                 race(agents_small, small, SMALL_START, args.seed, out / f"compare_{SMALL_MAP}.gif", cell_pixel_size=48)]
+        summary_rows += [{"demo": f"compare_{SMALL_MAP}", **agent_stats} for agent_stats in
+                 race(agents_small, small, SMALL_START, parsed_arguments.seed, out / f"compare_{SMALL_MAP}.gif", cell_pixel_size=48)]
 
     if "progress" in what:
         q_seq = checkpoint_sequence(paths["qtable"], "ep*.pkl", "episode") + [("đã học xong", paths["qtable"] / "final.pkl")]
-        agents = {label: TabularAgentBase.load(p) for label, p in q_seq}
-        rows += [{"demo": "progress_qlearning", **s} for s in
-                 race(agents, get_room_layout(SMALL_MAP), SMALL_START, args.seed, out / "progress_qlearning.gif", cell_pixel_size=48)]
+        agents = {label: TabularAgentBase.load(path) for label, path in q_seq}
+        summary_rows += [{"demo": "progress_qlearning", **agent_stats} for agent_stats in
+                 race(agents, get_room_layout(SMALL_MAP), SMALL_START, parsed_arguments.seed, out / "progress_qlearning.gif", cell_pixel_size=48)]
         d_seq = checkpoint_sequence(paths["dqn_map"] / "checkpoints", "step*.pt", "bước")
-        d_seq = [(label, p) for label, p in d_seq] + [("đã học xong", paths["dqn_map"] / "model.pt")]
-        agents = {label: load_dqn(p, hint_map) for label, p in d_seq}
-        rows += [{"demo": "progress_dqn", **s} for s in
-                 race(agents, grid, start, args.seed, out / "progress_dqn.gif")]
+        d_seq = [(label, path) for label, path in d_seq] + [("đã học xong", paths["dqn_map"] / "model.pt")]
+        agents = {label: load_dqn(path, hint_map) for label, path in d_seq}
+        summary_rows += [{"demo": "progress_dqn", **agent_stats} for agent_stats in
+                 race(agents, grid, start, parsed_arguments.seed, out / "progress_dqn.gif")]
 
     if "heatmap" in what:
         dqn = load_dqn(paths["dqn_map"] / "model.pt", hint_map)
-        agents = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagSweepAgent(),
+        agents = {"random_walk": RandomWalkAgent(seed=parsed_arguments.seed), "zigzag": ZigzagSweepAgent(),
                   "greedy_bfs": GreedyNearestDirtyCellAgent(), "DQN": dqn}
         visits, subtitles = {}, {}
         for name, agent in agents.items():
-            res = run_single_episode(agent, VacuumCleaningEnv(grid), seed=args.seed, record_visit_counts=True,
+            res = run_single_episode(agent, VacuumCleaningEnv(grid), seed=parsed_arguments.seed, record_visit_counts=True,
                               reset_options={"start": start})
             visits[name] = res["visits"]
             subtitles[name] = f"{res['steps']} bước, lặp {res['redundancy']:.0%}"
-        plot_visit_heatmaps(visits, grid, out / f"heatmap_{args.map}.png", subtitles)
+        plot_visit_heatmaps(visits, grid, out / f"heatmap_{parsed_arguments.map}.png", subtitles)
 
     if "unseen" in what:
         dqn = load_dqn(paths["dqn_random"] / "model.pt",
@@ -227,17 +227,17 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
         for i, room in enumerate(rooms):
             lists = []
             for name, agent in (("DQN (phòng lạ)", dqn), ("greedy_bfs", GreedyNearestDirtyCellAgent())):
-                frames, s = rollout(agent, VacuumCleaningEnv(room), f"phòng {i + 1}: {name}", args.seed, None, 32)
+                frames, agent_stats = rollout(agent, VacuumCleaningEnv(room), f"phòng {i + 1}: {name}", parsed_arguments.seed, None, 32)
                 lists.append(frames)
-                rows.append({"demo": f"unseen_room{i + 1}", **s})
+                summary_rows.append({"demo": f"unseen_room{i + 1}", **agent_stats})
             room_frames.append(lists)
-        n = max(len(f) for lists in room_frames for f in lists)
-        indices = range(n) if n <= MAX_GIF_FRAMES else sorted(set(np.linspace(0, n - 1, MAX_GIF_FRAMES).round().astype(int)))
-        frames = [stack_frames_vertically([place_frames_side_by_side([f[min(t, len(f) - 1)] for f in lists])
-                                    for lists in room_frames]) for t in indices]
+        frame_count = max(len(frame_list) for lists in room_frames for frame_list in lists)
+        indices = range(frame_count) if frame_count <= MAX_GIF_FRAMES else sorted(set(np.linspace(0, frame_count - 1, MAX_GIF_FRAMES).round().astype(int)))
+        frames = [stack_frames_vertically([place_frames_side_by_side([frame_list[min(frame_index, len(frame_list) - 1)] for frame_list in lists])
+                                    for lists in room_frames]) for frame_index in indices]
         save_gif(frames, out / "unseen_rooms.gif", frames_per_second=FPS, last_frame_hold=FPS * 2)
 
-    table = pd.DataFrame(rows)
+    table = pd.DataFrame(summary_rows)
     if not table.empty:
         write_text_file("# Số liệu demo\n\n" + dataframe_to_markdown_table(table), out / "demo_summary.md")
         print(dataframe_to_markdown_table(table))

@@ -70,12 +70,12 @@ def replot_ablation(results: Path) -> list[Path]:
         exp_dir = results / "ablation" / exp
         if not exp_dir.exists():
             continue
-        for map_dir in sorted(p for p in exp_dir.iterdir() if p.is_dir()):
+        for map_dir in sorted(path for path in exp_dir.iterdir() if path.is_dir()):
             frames = [_read_seeds(sorted(variant.glob("seed*/seed*_eval.csv")), variant=variant.name)
-                      for variant in sorted(p for p in map_dir.iterdir() if p.is_dir())]
-            df = pd.concat(frames, ignore_index=True)
+                      for variant in sorted(path for path in map_dir.iterdir() if path.is_dir())]
+            results_table = pd.concat(frames, ignore_index=True)
             out.append(plot_learning_curves(
-                df, "episode", [("coverage_mean", "tỷ lệ đã dọn (tham lam)"), ("steps_mean", "số bước (tham lam)")],
+                results_table, "episode", [("coverage_mean", "tỷ lệ đã dọn (tham lam)"), ("steps_mean", "số bước (tham lam)")],
                 "variant", results / "ablation" / "figures" / names[exp].format(map=map_dir.name),
                 titles[exp].format(map=map_dir.name), "episode"))
     return out
@@ -85,8 +85,8 @@ def _deep_references(tag: str) -> dict[str, float]:
     """Đường tham chiếu: tối ưu/greedy/zigzag trên bản đồ cố định, hoặc trên tập test 50 phòng ngẫu nhiên."""
     random_match = re.match(r"rand(\d+)x(\d+)_d([\d.]+)_K0", tag)
     if random_match:
-        h, w, density = int(random_match.group(1)), int(random_match.group(2)), float(random_match.group(3))
-        test_maps = generate_distinct_rooms(h, w, density, 50, seed=TEST_ROOMS_SEED)
+        height, width, density = int(random_match.group(1)), int(random_match.group(2)), float(random_match.group(3))
+        test_maps = generate_distinct_rooms(height, width, density, 50, seed=TEST_ROOMS_SEED)
         return {name: float(evaluate_agent_on_rooms(agent, test_maps, 1, seed=0)["steps"].mean())
                 for name, agent in (("greedy_bfs", GreedyNearestDirtyCellAgent()), ("zigzag", ZigzagSweepAgent()))}
     fixed = re.fullmatch(r"(.+?)(?:_s(\d)(\d))?", tag)
@@ -97,13 +97,13 @@ def _deep_references(tag: str) -> dict[str, float]:
 def replot_deep(results: Path) -> list[Path]:
     """Learning curve của các lượt run_deep trong results/deep/dqn/."""
     out = []
-    for run_dir in sorted(p for p in (results / "deep" / "dqn").iterdir() if p.is_dir()):
+    for run_dir in sorted(path for path in (results / "deep" / "dqn").iterdir() if path.is_dir()):
         paths = sorted(run_dir.glob("seed*/eval.csv"))
         if not paths:
             continue
-        df = _read_seeds(paths, algo="dqn")
+        results_table = _read_seeds(paths, algo="dqn")
         out.append(plot_learning_curves(
-            df, "global_step", EVAL_PANELS, "algo", results / "deep" / "figures" / f"deep_learning_curve_{run_dir.name}.png",
+            results_table, "global_step", EVAL_PANELS, "algo", results / "deep" / "figures" / f"deep_learning_curve_{run_dir.name}.png",
             f"DQN trên {run_dir.name}", "bước huấn luyện", reference_lines={"steps_mean": _deep_references(run_dir.name)}))
     return out
 
