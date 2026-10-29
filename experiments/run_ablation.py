@@ -20,15 +20,16 @@ from experiments.common import add_common_args, make_env_factory, resolve_out, r
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from env.maps import FIXED_MAPS, get_map  # noqa: E402
-from env.render import record_episode  # noqa: E402
-from env.vacuum_env import RewardConfig  # noqa: E402
-from experiments.evaluate import summarize  # noqa: E402
+from environment.room_layouts import FIXED_ROOM_LAYOUTS, get_room_layout  # noqa: E402
+from environment.rendering.gif_recording import record_episode_as_gif  # noqa: E402
+from environment.reward_settings import RewardSettings  # noqa: E402
+from evaluation.metric_summary import summarize_metrics  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_learning_curves, write_text  # noqa: E402
 from experiments.run_tabular import train_one  # noqa: E402
-from tabular.common import TabularAgent, TabularConfig  # noqa: E402
-from tabular.state_space import build_state_graph  # noqa: E402
-from tabular.value_iteration import value_iteration  # noqa: E402
+from agents.tabular.tabular_agent_base import TabularAgentBase  # noqa: E402
+from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
+from agents.tabular.state_transition_graph import build_state_transition_graph  # noqa: E402
+from agents.tabular.value_iteration import run_value_iteration  # noqa: E402
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 START = (0, 0)
@@ -39,7 +40,7 @@ STATE_MODES = ["full", "position_only"]
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Ablation: tính Markov của state (E1) và thiết kế reward (E2).")
     parser.add_argument("--exp", required=True, choices=["markov", "reward"])
-    parser.add_argument("--map", default="obstacle_4x4", choices=sorted(FIXED_MAPS))
+    parser.add_argument("--map", default="obstacle_4x4", choices=sorted(FIXED_ROOM_LAYOUTS))
     parser.add_argument("--episodes", type=int, default=20_000)
     add_common_args(parser, "results/ablation")
     return parser
@@ -51,7 +52,7 @@ def run_variants(variants: dict[str, dict[str, Any]], map_name: str, episodes: i
     tasks, names = [], []
     for name, variant in variants.items():
         for seed in seeds:
-            cfg = TabularConfig(n_episodes=episodes, eval_every=max(1, episodes // 200), eval_episodes=1,
+            cfg = TabularSettings(episode_count=episodes, evaluate_every_episodes=max(1, episodes // 200), evaluation_episode_count=1,
                                 state_mode=variant.get("state_mode", "full"),
                                 checkpoint_episodes=(), seed=seed)
             tasks.append({"algo": "q_learning", "map_name": map_name, "start": START,
@@ -71,18 +72,18 @@ def curves_and_summary(results: list[dict[str, Any]], out_fig: Path, title: str)
                                               ("steps_mean", "số bước (tham lam)")], "variant", out_fig, title,
                          "episode")
     finals = pd.concat([r["final"].assign(seed=r["seed"], variant=r["variant"]) for r in results], ignore_index=True)
-    return summarize(finals, ["variant"])[["variant", "n", "success_rate", "coverage_mean", "coverage_std",
+    return summarize_metrics(finals, ["variant"])[["variant", "n", "success_rate", "coverage_mean", "coverage_std",
                                            "steps_mean", "steps_std", "redundancy_mean"]]
 
 
 def record_greedy_gif(log_dir: Path, map_name: str, reward: str, path: Path) -> dict[str, Any]:
     """GIF chính sách tham lam của agent đã học (seed 0) — để thấy tận mắt hành vi."""
-    agent = TabularAgent.load(log_dir / "checkpoints" / "final.pkl")
+    agent = TabularAgentBase.load(log_dir / "checkpoints" / "final.pkl")
     env = make_env_factory(map_name, start=START, reward=reward, render_mode="rgb_array")()
-    return record_episode(agent, env, path, seed=0)
+    return record_episode_as_gif(agent, env, path, seed=0)
 
 
-def count_back_and_forth(agent: TabularAgent, map_name: str, reward: str) -> int:
+def count_back_and_forth(agent: TabularAgentBase, map_name: str, reward: str) -> int:
     """Số lần robot quay lại đúng ô của 2 bước trước (dấu hiệu vòng lặp "ra-vào")."""
     env = make_env_factory(map_name, start=START, reward=reward)()
     obs, info = env.reset(seed=0)
@@ -100,14 +101,14 @@ def shaping_policy_check(map_name: str, gamma: float = 0.99) -> dict[str, int]:
 
     Đếm số trạng thái mà hành động tối ưu dưới reward shaped KHÔNG còn tối ưu dưới reward dense.
     """
-    grid = get_map(map_name)
-    dense = value_iteration(build_state_graph(grid, RewardConfig.dense()), gamma=gamma)
-    shaped = value_iteration(build_state_graph(grid, RewardConfig.shaped(1.0)), gamma=gamma)
-    assert dense.graph.states == shaped.graph.states  # cùng động lực học -> cùng thứ tự trạng thái
-    non_terminal = ~dense.graph.is_terminal
-    rows = np.arange(dense.graph.n_states)
-    q_of_shaped_choice = dense.Q[rows, shaped.policy]
-    differs = (q_of_shaped_choice < dense.Q.max(axis=1) - 1e-6) & non_terminal
+    grid = get_room_layout(map_name)
+    dense = run_value_iteration(build_state_transition_graph(grid, RewardSettings.dense()), gamma=gamma)
+    shaped = run_value_iteration(build_state_transition_graph(grid, RewardSettings.shaped(1.0)), gamma=gamma)
+    assert dense.graph.state_keys == shaped.graph.state_keys  # cùng động lực học -> cùng thứ tự trạng thái
+    non_terminal = ~dense.graph.is_terminal_state
+    rows = np.arange(dense.graph.state_count)
+    q_of_shaped_choice = dense.action_values[rows, shaped.policy]
+    differs = (q_of_shaped_choice < dense.action_values.max(axis=1) - 1e-6) & non_terminal
     return {"n_states": int(non_terminal.sum()), "n_policy_differs": int(differs.sum())}
 
 
@@ -134,7 +135,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                                    f"E2: bốn thiết kế reward ({args.map}, xuất phát {START})")
         hack_dir = run_dir / "hackable" / f"seed{seeds[0]}"
         gif = record_greedy_gif(hack_dir, args.map, "hackable", gif_dir / f"e2_reward_hacking_{args.map}.gif")
-        hack_agent = TabularAgent.load(hack_dir / "checkpoints" / "final.pkl")
+        hack_agent = TabularAgentBase.load(hack_dir / "checkpoints" / "final.pkl")
         extra = {"hackable_gif": gif,
                  "hackable_back_and_forth_moves": count_back_and_forth(hack_agent, args.map, "hackable"),
                  "shaping_theory_check": shaping_policy_check(args.map)}

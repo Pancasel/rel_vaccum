@@ -242,14 +242,14 @@ def plot_q_convergence(train_logs: pd.DataFrame, v_star: float, out_path: str | 
 def plot_visit_heatmaps(visits: dict[str, np.ndarray], grid: np.ndarray, out_path: str | os.PathLike,
                         subtitles: dict[str, str] | None = None) -> Path:
     """Heatmap số lần đi qua mỗi ô, mỗi agent một ô con, cùng thang màu."""
-    from env.render import visit_heatmap
+    from environment.rendering.visit_heatmap import draw_visit_heatmap
 
     names = list(visits)
     vmax = max(float(v.max()) for v in visits.values())
     fig, axes = plt.subplots(1, len(names), figsize=(3.2 * len(names), 3.6), squeeze=False)
     image = None
     for ax, name in zip(axes[0], names):
-        image = visit_heatmap(visits[name], grid, ax=ax, vmax=vmax)
+        image = draw_visit_heatmap(visits[name], grid, axes=ax, color_scale_max=vmax)
         ax.set_title(f"{name}\n{(subtitles or {}).get(name, '')}", fontsize=10)
     if image is not None:
         fig.colorbar(image, ax=axes[0].tolist(), shrink=0.8, label="số lần đi qua")

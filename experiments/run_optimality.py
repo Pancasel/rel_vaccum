@@ -20,16 +20,17 @@ from experiments.common import add_common_args, make_env_factory, resolve_out, r
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from baselines import GreedyBFSAgent, ZigzagAgent  # noqa: E402
-from deep.dqn import DQNAgent, DQNConfig  # noqa: E402
-from env.maps import get_map  # noqa: E402
-from env.vacuum_env import VacuumEnv  # noqa: E402
-from experiments.evaluate import run_episode  # noqa: E402
+from agents.baselines import GreedyNearestDirtyCellAgent, ZigzagSweepAgent  # noqa: E402
+from agents.deep_q_network.deep_q_network_agent import DeepQNetworkAgent  # noqa: E402
+from agents.deep_q_network.deep_q_network_settings import DeepQNetworkSettings  # noqa: E402
+from environment.room_layouts import get_room_layout  # noqa: E402
+from environment.vacuum_cleaning_env import VacuumCleaningEnv  # noqa: E402
+from evaluation.episode_runner import run_single_episode  # noqa: E402
 from experiments.plots import df_to_markdown_table, write_text  # noqa: E402
-from tabular.common import TabularConfig  # noqa: E402
-from tabular.q_learning import QLearningAgent  # noqa: E402
-from tabular.state_space import build_state_graph, min_steps_to_cover  # noqa: E402
-from tabular.value_iteration import VIAgent, value_iteration  # noqa: E402
+from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
+from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
+from agents.tabular.state_transition_graph import build_state_transition_graph, minimum_steps_to_clean_all  # noqa: E402
+from agents.tabular.value_iteration import ValueIterationPolicyAgent, run_value_iteration  # noqa: E402
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 STARTS: dict[str, list[tuple[int, int]]] = {
@@ -43,22 +44,22 @@ DQN_TIMESTEPS = {"empty_3x3": 60_000, "obstacle_4x4": 200_000}
 def train_q(map_name: str, start: tuple[int, int], episodes: int, seed: int) -> dict[str, Any]:
     """Q-learning cho một (bản đồ, ô xuất phát, seed); trả số bước của chính sách tham lam."""
     factory = make_env_factory(map_name, start=start)
-    agent = QLearningAgent(get_map(map_name), TabularConfig(n_episodes=episodes, eval_every=episodes, eval_episodes=1,
+    agent = QLearningAgent(get_room_layout(map_name), TabularSettings(episode_count=episodes, evaluate_every_episodes=episodes, evaluation_episode_count=1,
                                                             seed=seed))
     agent.train(factory)
-    return {"map": map_name, "start": start, "seed": seed, "steps": run_episode(agent, factory(), seed=0)["steps"]}
+    return {"map": map_name, "start": start, "seed": seed, "steps": run_single_episode(agent, factory(), seed=0)["steps"]}
 
 
 def train_dqn(map_name: str, timesteps: int, seed: int, log_dir: str, device: str = "auto") -> dict[str, Any]:
     """DQN cho một bản đồ (xuất phát ngẫu nhiên); trả số bước từ từng ô xuất phát của bảng E6."""
-    factory = functools.partial(VacuumEnv, map_name)
-    agent = DQNAgent((3, *get_map(map_name).shape),
-                     DQNConfig(total_timesteps=timesteps, learning_starts=min(2_000, timesteps // 5),
-                               eval_every_steps=max(1, timesteps // 10), eval_episodes=10, device=device, seed=seed))
+    factory = functools.partial(VacuumCleaningEnv, map_name)
+    agent = DeepQNetworkAgent((3, *get_room_layout(map_name).shape),
+                     DeepQNetworkSettings(total_timesteps=timesteps, random_warmup_steps=min(2_000, timesteps // 5),
+                               evaluate_every_steps=max(1, timesteps // 10), evaluation_episode_count=10, device=device, seed=seed))
     agent.train(factory, log_dir)
     env = factory()
     return {"map": map_name, "seed": seed,
-            "steps": {s: run_episode(agent, env, seed=0, reset_options={"start": s})["steps"] for s in STARTS[map_name]}}
+            "steps": {s: run_single_episode(agent, env, seed=0, reset_options={"start": s})["steps"] for s in STARTS[map_name]}}
 
 
 def dispatch_task(kind: str, kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -95,17 +96,17 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     rows, raw = [], []
     for m in args.maps:
-        grid = get_map(m)
-        vi = value_iteration(build_state_graph(grid))
-        env = VacuumEnv(grid)
+        grid = get_room_layout(m)
+        vi = run_value_iteration(build_state_transition_graph(grid))
+        env = VacuumCleaningEnv(grid)
         for s in STARTS[m]:
-            optimum = min_steps_to_cover(vi.graph, s)
+            optimum = minimum_steps_to_clean_all(vi.graph, s)
             values = {
-                "VI": [run_episode(VIAgent(vi), env, seed=0, reset_options={"start": s})["steps"]],
+                "VI": [run_single_episode(ValueIterationPolicyAgent(vi), env, seed=0, reset_options={"start": s})["steps"]],
                 "Q-learning": [r["steps"] for r in q_res if r["map"] == m and r["start"] == s],
                 "DQN": [r["steps"][s] for r in d_res if r["map"] == m],
-                "greedy_bfs": [run_episode(GreedyBFSAgent(), env, seed=0, reset_options={"start": s})["steps"]],
-                "zigzag": [run_episode(ZigzagAgent(), env, seed=0, reset_options={"start": s})["steps"]],
+                "greedy_bfs": [run_single_episode(GreedyNearestDirtyCellAgent(), env, seed=0, reset_options={"start": s})["steps"]],
+                "zigzag": [run_single_episode(ZigzagSweepAgent(), env, seed=0, reset_options={"start": s})["steps"]],
             }
             rows.append({"map": m, "start": str(s), "min_steps": optimum,
                          **{name: cell(v, optimum) for name, v in values.items()}})

@@ -32,3 +32,4 @@ results/**/*.pkl
 slides/build/node_modules/
 slides/build/assets/
 slides/build/render/
+results/_quick/

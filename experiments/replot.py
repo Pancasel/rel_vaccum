@@ -10,14 +10,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from experiments.common import optimal_value, reference_steps, resolve_out
+from evaluation.optimal_reference import optimal_value_of_start, reference_step_counts
+from experiments.common import resolve_out
 
 import pandas as pd  # noqa: E402
 
-from baselines import GreedyBFSAgent, ZigzagAgent  # noqa: E402
-from env.maps import generate_map_set, get_map  # noqa: E402
-from env.vacuum_env import RewardConfig  # noqa: E402
-from experiments.evaluate import evaluate_on_maps  # noqa: E402
+from agents.baselines import GreedyNearestDirtyCellAgent, ZigzagSweepAgent  # noqa: E402
+from environment.random_room_generator import generate_distinct_rooms  # noqa: E402
+from environment.room_layouts import get_room_layout  # noqa: E402
+from environment.reward_settings import RewardSettings  # noqa: E402
+from evaluation.agent_evaluation import evaluate_agent_on_rooms  # noqa: E402
 from experiments.plots import plot_learning_curves, plot_q_convergence  # noqa: E402
 from experiments.run_deep import TEST_SET_SEED  # noqa: E402
 
@@ -41,16 +43,16 @@ def replot_tabular(results: Path) -> list[Path]:
         match = re.fullmatch(r"(.+?)(?:_s(\d)(\d))?", run_dir.name)
         map_name = match.group(1)
         start = (int(match.group(2)), int(match.group(3))) if match.group(2) else None
-        grid = get_map(map_name)
+        grid = get_room_layout(map_name)
         evals = _read_seeds(sorted(run_dir.glob("q_learning/seed*/seed*_eval.csv")), algo="q_learning")
         start_txt = f"xuất phát {start}" if start else "xuất phát ngẫu nhiên"
         out.append(plot_learning_curves(
             evals, "episode", EVAL_PANELS, "algo", results / "tabular" / "figures" / f"tabular_learning_curve_{run_dir.name}.png",
             f"q_learning trên {map_name} ({start_txt}, reward dense, state full)", "episode",
-            hlines={"steps_mean": reference_steps(grid, start)}))
+            hlines={"steps_mean": reference_step_counts(grid, start)}))
         if start is not None:
             train = _read_seeds(sorted(run_dir.glob("q_learning/seed*/seed*_train.csv")), algo="q_learning")
-            v_star = optimal_value(grid, start, RewardConfig.dense(), 0.99)
+            v_star = optimal_value_of_start(grid, start, RewardSettings.dense(), 0.99)
             if v_star is not None:
                 episodes = int(train["episode"].max())
                 out.append(plot_q_convergence(train, v_star, results / "tabular" / "figures" /
@@ -84,12 +86,12 @@ def _deep_references(tag: str) -> dict[str, float]:
     random_match = re.match(r"rand(\d+)x(\d+)_d([\d.]+)_K0", tag)
     if random_match:
         h, w, density = int(random_match.group(1)), int(random_match.group(2)), float(random_match.group(3))
-        test_maps = generate_map_set(h, w, density, 50, seed=TEST_SET_SEED)
-        return {name: float(evaluate_on_maps(agent, test_maps, 1, seed=0)["steps"].mean())
-                for name, agent in (("greedy_bfs", GreedyBFSAgent()), ("zigzag", ZigzagAgent()))}
+        test_maps = generate_distinct_rooms(h, w, density, 50, seed=TEST_SET_SEED)
+        return {name: float(evaluate_agent_on_rooms(agent, test_maps, 1, seed=0)["steps"].mean())
+                for name, agent in (("greedy_bfs", GreedyNearestDirtyCellAgent()), ("zigzag", ZigzagSweepAgent()))}
     fixed = re.fullmatch(r"(.+?)(?:_s(\d)(\d))?", tag)
     start = (int(fixed.group(2)), int(fixed.group(3))) if fixed.group(2) else None
-    return reference_steps(get_map(fixed.group(1)), start)
+    return reference_step_counts(get_room_layout(fixed.group(1)), start)
 
 
 def replot_deep(results: Path) -> list[Path]:

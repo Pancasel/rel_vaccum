@@ -16,17 +16,18 @@ import sys
 import time
 from typing import Any
 
-from experiments.common import make_env_factory, optimal_steps_by_start, resolve_out, run_parallel
+from experiments.common import make_env_factory, resolve_out, run_parallel
+from evaluation.optimal_reference import optimal_steps_for_each_start
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from env.maps import get_map, parse_map  # noqa: E402
-from experiments.evaluate import evaluate  # noqa: E402
+from environment.room_layouts import get_room_layout, parse_room_layout  # noqa: E402
+from evaluation.agent_evaluation import evaluate_agent  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_state_explosion, plot_tabular_scaling  # noqa: E402
-from tabular.common import TabularConfig  # noqa: E402
-from tabular.q_learning import QLearningAgent  # noqa: E402
-from tabular.state_space import count_reachable_states  # noqa: E402
+from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
+from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
+from agents.tabular.reachable_state_counter import count_reachable_states  # noqa: E402
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 COUNT_SIZES = [(2, 2), (2, 3), (3, 3), (3, 4), (4, 4), (4, 5)]
@@ -52,14 +53,14 @@ def count_states(sizes: list[tuple[int, int]], bound_only: list[tuple[int, int]]
     """Bảng số trạng thái: đếm thực tế (BFS) cho lưới nhỏ, chỉ cận trên cho lưới lớn."""
     rows = []
     for h, w in sizes + bound_only:
-        n_free = h * w
+        free_cell_count = h * w
         reachable, elapsed = None, None
         if (h, w) in sizes:
             t0 = time.monotonic()
-            reachable = count_reachable_states(parse_map(["." * w] * h), time_limit_s=time_limit_s)
+            reachable = count_reachable_states(parse_room_layout(["." * w] * h), time_limit_seconds=time_limit_s)
             elapsed = round(time.monotonic() - t0, 3)
-        states_for_memory = reachable if reachable is not None else n_free * 2**n_free
-        rows.append({"grid": f"{h}x{w}", "n_free": n_free, "upper_bound": float(n_free * 2**n_free),
+        states_for_memory = reachable if reachable is not None else free_cell_count * 2**free_cell_count
+        rows.append({"grid": f"{h}x{w}", "n_free": free_cell_count, "upper_bound": float(free_cell_count * 2**free_cell_count),
                      "reachable": float(reachable) if reachable is not None else np.nan, "count_time_s": elapsed,
                      "q_table_mb": states_for_memory * BYTES_PER_Q_STATE / 1e6})
     return pd.DataFrame(rows)
@@ -67,23 +68,23 @@ def count_states(sizes: list[tuple[int, int]], bound_only: list[tuple[int, int]]
 
 def _q_table_bytes(agent: QLearningAgent) -> int:
     """Ước lượng bộ nhớ thực của bảng Q dạng dict Python (khóa tuple + mảng numpy + ô băm)."""
-    if not agent.q:
+    if not agent.q_table:
         return 0
-    key, row = next(iter(agent.q.items()))
+    key, row = next(iter(agent.q_table.items()))
     per_entry = sys.getsizeof(key) + sum(sys.getsizeof(k) for k in key) + sys.getsizeof(row) + 2 * 8 * 3
-    return per_entry * len(agent.q) + sys.getsizeof(agent.q)
+    return per_entry * len(agent.q_table) + sys.getsizeof(agent.q_table)
 
 
 def train_with_budget(map_name: str, budget_min: float, seed: int) -> dict[str, Any]:
     """Huấn luyện Q-learning (xuất phát (0,0)) trong một khoảng thời gian cố định."""
     factory = make_env_factory(map_name, start=(0, 0))
-    cfg = TabularConfig(n_episodes=10_000_000, time_budget_min=budget_min, eval_every=200, eval_episodes=1,
+    cfg = TabularSettings(episode_count=10_000_000, time_budget_minutes=budget_min, evaluate_every_episodes=200, evaluation_episode_count=1,
                         epsilon_decay_fraction=0.01, seed=seed)
     # Không biết trước số episode chạy được trong ngân sách: ε giảm trong 100.000 episode đầu
     # (1% của 10 triệu) rồi giữ 0.05; lưới lớn thường còn đang khám phá khi hết giờ.
-    agent = QLearningAgent(get_map(map_name), cfg)
+    agent = QLearningAgent(get_room_layout(map_name), cfg)
     train_log, eval_log = agent.train(factory)
-    final = evaluate(agent, factory, 1, seed=seed)
+    final = evaluate_agent(agent, factory, 1, seed=seed)
     return {"map": map_name, "train": train_log, "eval": eval_log, "final": final.iloc[0].to_dict(),
             "q_bytes": _q_table_bytes(agent)}
 
@@ -91,9 +92,9 @@ def train_with_budget(map_name: str, budget_min: float, seed: int) -> dict[str, 
 def scaling_table(results: list[dict[str, Any]]) -> pd.DataFrame:
     rows = []
     for res in results:
-        optimum = optimal_steps_by_start(get_map(res["map"]))
+        optimum = optimal_steps_for_each_start(get_room_layout(res["map"]))
         rows.append({
-            "map": res["map"], "n_free": int((get_map(res["map"]) == 0).sum()),
+            "map": res["map"], "n_free": int((get_room_layout(res["map"]) == 0).sum()),
             "episodes_done": len(res["train"]), "minutes": res["train"]["wall_time_s"].iloc[-1] / 60,
             "n_states_visited": int(res["train"]["n_states_visited"].iloc[-1]),
             "final_coverage": res["final"]["coverage"], "final_steps": res["final"]["steps"],

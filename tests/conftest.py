@@ -9,16 +9,16 @@ setup_local_caches()
 
 import pytest  # noqa: E402
 
-from env.vacuum_env import VacuumEnv  # noqa: E402
+from environment.vacuum_cleaning_env import VacuumCleaningEnv  # noqa: E402
 
 
 @pytest.fixture
-def env_3x3_corner() -> VacuumEnv:
+def env_3x3_corner() -> VacuumCleaningEnv:
     """Môi trường 3x3 trống, xuất phát cố định ở góc (0,0)."""
-    return VacuumEnv("empty_3x3", start=(0, 0))
+    return VacuumCleaningEnv("empty_3x3", start=(0, 0))
 
 
 @pytest.fixture
-def env_4x4_obstacle() -> VacuumEnv:
+def env_4x4_obstacle() -> VacuumCleaningEnv:
     """Môi trường 4x4 có vật cản, xuất phát ngẫu nhiên."""
-    return VacuumEnv("obstacle_4x4")
+    return VacuumCleaningEnv("obstacle_4x4")

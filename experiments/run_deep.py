@@ -15,18 +15,23 @@ import functools
 from pathlib import Path
 from typing import Any, Callable
 
-from experiments.common import (add_common_args, optimal_steps_by_start, parse_start, reference_steps,
-                                resolve_out, run_parallel)
+from experiments.common import add_common_args, parse_start, resolve_out, run_parallel
+from evaluation.optimal_reference import optimal_steps_for_each_start, reference_step_counts
 
 import gymnasium  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from baselines import GreedyBFSAgent, ZigzagAgent  # noqa: E402
-from deep.dqn import DQNAgent, DQNConfig  # noqa: E402
-from env.maps import FIXED_MAPS, generate_map_set, get_map  # noqa: E402
-from env.vacuum_env import RandomMapVacuumEnv, RewardConfig, VacuumEnv  # noqa: E402
-from experiments.evaluate import evaluate, evaluate_on_maps, summarize  # noqa: E402
+from agents.baselines import GreedyNearestDirtyCellAgent, ZigzagSweepAgent  # noqa: E402
+from agents.deep_q_network.deep_q_network_agent import DeepQNetworkAgent  # noqa: E402
+from agents.deep_q_network.deep_q_network_settings import DeepQNetworkSettings  # noqa: E402
+from environment.room_layouts import FIXED_ROOM_LAYOUTS, get_room_layout  # noqa: E402
+from environment.random_room_generator import generate_distinct_rooms  # noqa: E402
+from environment.random_room_vacuum_env import RandomRoomVacuumCleaningEnv  # noqa: E402
+from environment.reward_settings import RewardSettings  # noqa: E402
+from environment.vacuum_cleaning_env import VacuumCleaningEnv  # noqa: E402
+from evaluation.agent_evaluation import evaluate_agent, evaluate_agent_on_rooms  # noqa: E402
+from evaluation.metric_summary import summarize_metrics  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_learning_curves  # noqa: E402
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
@@ -36,10 +41,10 @@ N_TEST_MAPS = 50
 FINAL_EVAL_EPISODES_RANDOM_START = 50
 
 
-def reward_config_of(spec: dict[str, Any]) -> RewardConfig:
+def reward_config_of(spec: dict[str, Any]) -> RewardSettings:
     """Cấu hình reward theo spec; "shaping_coef" (nếu có) ghi đè hệ số shaping thế năng."""
     overrides = {"shaping_coef": spec["shaping_coef"]} if spec.get("shaping_coef") is not None else {}
-    return RewardConfig.from_name(spec["reward"], **overrides)
+    return RewardSettings.from_name(spec["reward"], **overrides)
 
 
 def make_env(spec: dict[str, Any]) -> gymnasium.Env:
@@ -51,17 +56,18 @@ def make_env(spec: dict[str, Any]) -> gymnasium.Env:
     reward = reward_config_of(spec)
     if spec.get("random"):
         h, w, density = spec["random"]
-        env: gymnasium.Env = RandomMapVacuumEnv(h, w, density, map_pool=spec.get("pool"),
-                                                exclude_maps=spec.get("exclude"), reward_config=reward)
+        env: gymnasium.Env = RandomRoomVacuumCleaningEnv(h, w, density, room_pool=spec.get("pool"),
+                                                excluded_rooms=spec.get("exclude"), reward_settings=reward)
     else:
-        env = VacuumEnv(spec["map"], reward_config=reward, start=spec.get("start"))
+        env = VacuumCleaningEnv(spec["map"], reward_settings=reward, start=spec.get("start"))
     return env
 
 
-# Cờ dòng lệnh -> (trường DQNConfig, hậu tố tên thư mục), chỉ thêm vào tên khi khác mặc định.
-TRAIN_TAGS = {"learning_rate": ("learning_rate", "lr"), "target_update": ("target_update_interval", "tu"),
-              "buffer_size": ("buffer_size", "buf"), "n_envs": ("n_envs", "ne"), "batch_size": ("batch_size", "bs"),
-              "train_freq": ("train_freq", "tf")}
+# Cờ dòng lệnh -> (trường DeepQNetworkSettings, hậu tố tên thư mục), chỉ thêm vào tên khi khác mặc định.
+TRAIN_TAGS = {"learning_rate": ("learning_rate", "lr"),
+              "target_update": ("target_network_sync_interval_steps", "tu"),
+              "buffer_size": ("replay_buffer_capacity", "buf"), "n_envs": ("parallel_env_count", "ne"),
+              "batch_size": ("batch_size", "bs"), "train_freq": ("steps_per_network_update", "tf")}
 
 
 def env_tag(spec: dict[str, Any]) -> str:
@@ -93,7 +99,7 @@ def train_tag(args: argparse.Namespace) -> str:
     tag = ""
     for flag, (field_name, short) in TRAIN_TAGS.items():
         value = getattr(args, flag, None)
-        if value is not None and value != getattr(DQNConfig, field_name):
+        if value is not None and value != getattr(DeepQNetworkSettings, field_name):
             tag += f"_{short}{value:g}"
     return tag
 
@@ -107,17 +113,17 @@ def check_reward_args(parser: argparse.ArgumentParser, args: argparse.Namespace)
 def final_evaluation(agent: Any, spec: dict[str, Any], seed: int, test_maps: list[np.ndarray] | None) -> pd.DataFrame:
     """Đánh giá cuối: trên tập bản đồ test (nếu huấn luyện bản đồ ngẫu nhiên) hoặc trên bản đồ cố định."""
     if test_maps is not None:
-        return evaluate_on_maps(agent, test_maps, 1, seed=2000 + seed, reward_config=reward_config_of(spec))
+        return evaluate_agent_on_rooms(agent, test_maps, 1, seed=2000 + seed, reward_settings=reward_config_of(spec))
     n = 1 if spec.get("start") else FINAL_EVAL_EPISODES_RANDOM_START
-    return evaluate(agent, functools.partial(make_env, spec), n, seed=2000 + seed)
+    return evaluate_agent(agent, functools.partial(make_env, spec), n, seed=2000 + seed)
 
 
 def train_one(spec: dict[str, Any], cfg: dict[str, Any], log_dir: str,
               test_maps: list[np.ndarray] | None) -> dict[str, Any]:
     """Huấn luyện một seed DQN và đánh giá cuối (chạy được ở tiến trình con)."""
     factory = functools.partial(make_env, spec)
-    obs_shape = factory().observation_space.shape
-    agent = DQNAgent(obs_shape, DQNConfig(**cfg))
+    observation_shape = factory().observation_space.shape
+    agent = DeepQNetworkAgent(observation_shape, DeepQNetworkSettings(**cfg))
     logs = agent.train(factory, log_dir)
     final = final_evaluation(agent, spec, cfg["seed"], test_maps)
     save_dataframe_csv(final, Path(log_dir) / "final_eval.csv")
@@ -127,10 +133,10 @@ def train_one(spec: dict[str, Any], cfg: dict[str, Any], log_dir: str,
 def baseline_references(spec: dict[str, Any], test_maps: list[np.ndarray] | None) -> dict[str, float]:
     """Số bước tham chiếu (tối ưu nếu tính được, greedy_bfs, zigzag) cho learning curve."""
     if test_maps is None:
-        return reference_steps(get_map(spec["map"]), spec.get("start"))
+        return reference_step_counts(get_room_layout(spec["map"]), spec.get("start"))
     refs = {}
-    for name, agent in (("greedy_bfs", GreedyBFSAgent()), ("zigzag", ZigzagAgent())):
-        refs[name] = float(evaluate_on_maps(agent, test_maps, 1, seed=0)["steps"].mean())
+    for name, agent in (("greedy_bfs", GreedyNearestDirtyCellAgent()), ("zigzag", ZigzagSweepAgent())):
+        refs[name] = float(evaluate_agent_on_rooms(agent, test_maps, 1, seed=0)["steps"].mean())
     return refs
 
 
@@ -139,7 +145,7 @@ def summarize_seeds(results: list[dict[str, Any]], optimum: dict[tuple[int, int]
     rows = []
     for res in results:
         final = res["final"]
-        row = {"seed": res["seed"], **summarize(final).iloc[0].to_dict()}
+        row = {"seed": res["seed"], **summarize_metrics(final).iloc[0].to_dict()}
         if optimum is not None:
             done = final[final["terminated"]]
             opt = np.array([optimum[(r, c)] for r, c in zip(done["start_row"], done["start_col"])])
@@ -158,16 +164,16 @@ def summarize_seeds(results: list[dict[str, Any]], optimum: dict[tuple[int, int]
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Huấn luyện DQN (Deep Q-learning).")
     where = parser.add_mutually_exclusive_group()
-    where.add_argument("--map", choices=sorted(FIXED_MAPS), help="bản đồ cố định (mặc định obstacle_4x4)")
+    where.add_argument("--map", choices=sorted(FIXED_ROOM_LAYOUTS), help="bản đồ cố định (mặc định obstacle_4x4)")
     where.add_argument("--random-maps", nargs=3, metavar=("H", "W", "DENSITY"),
                        help="huấn luyện trên bản đồ ngẫu nhiên H x W với mật độ vật cản DENSITY")
     parser.add_argument("--n-train-maps", type=int, default=0, help="K bản đồ train cố định (0 = sinh mới mỗi episode)")
     parser.add_argument("--start", nargs="+", default=["random"], help="'random' hoặc R C (chỉ với --map)")
-    parser.add_argument("--reward", default="dense", choices=list(RewardConfig.PRESETS))
+    parser.add_argument("--reward", default="dense", choices=list(RewardSettings.PRESETS))
     parser.add_argument("--timesteps", type=int, default=200_000)
-    parser.add_argument("--learning-rate", type=float, default=DQNConfig.learning_rate)
-    parser.add_argument("--target-update", type=int, default=DQNConfig.target_update_interval)
-    parser.add_argument("--buffer-size", type=int, default=DQNConfig.buffer_size)
+    parser.add_argument("--learning-rate", type=float, default=DeepQNetworkSettings.learning_rate)
+    parser.add_argument("--target-update", type=int, default=DeepQNetworkSettings.target_network_sync_interval_steps)
+    parser.add_argument("--buffer-size", type=int, default=DeepQNetworkSettings.replay_buffer_capacity)
     parser.add_argument("--eval-every", type=int, default=None, help="mặc định: timesteps/40")
     parser.add_argument("--eval-episodes", type=int, default=20)
     parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
@@ -194,8 +200,8 @@ def build_spec(args: argparse.Namespace) -> tuple[dict[str, Any], list[np.ndarra
     if args.random_maps:
         h, w, density = int(args.random_maps[0]), int(args.random_maps[1]), float(args.random_maps[2])
         n_test = 5 if args.quick else N_TEST_MAPS
-        test_maps = generate_map_set(h, w, density, n_test, seed=TEST_SET_SEED)
-        pool = (generate_map_set(h, w, density, args.n_train_maps, seed=TRAIN_POOL_SEED, exclude=test_maps)
+        test_maps = generate_distinct_rooms(h, w, density, n_test, seed=TEST_SET_SEED)
+        pool = (generate_distinct_rooms(h, w, density, args.n_train_maps, seed=TRAIN_POOL_SEED, excluded_rooms=test_maps)
                 if args.n_train_maps > 0 else None)
         spec.update({"map": None, "random": (h, w, density), "pool": pool, "exclude": test_maps})
         return spec, test_maps
@@ -211,25 +217,25 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     spec, test_maps = build_spec(args)
     seeds = args.seeds[:1] if args.quick else args.seeds
     timesteps = min(args.timesteps, 1_500) if args.quick else args.timesteps
-    eval_every = args.eval_every or max(1, timesteps // 40)
+    evaluate_every_steps = args.eval_every or max(1, timesteps // 40)
     checkpoints = args.checkpoints if args.checkpoints is not None else [0, timesteps // 4, timesteps]
     tag = env_tag(spec) + train_tag(args)
     run_dir = out / "dqn" / tag
     tasks = []
     for seed in seeds:
-        cfg = DQNConfig(total_timesteps=timesteps, learning_rate=args.learning_rate,
-                        target_update_interval=args.target_update, buffer_size=args.buffer_size,
-                        learning_starts=min(DQNConfig.learning_starts, timesteps // 5),
-                        eval_every_steps=eval_every, eval_episodes=2 if args.quick else args.eval_episodes,
-                        log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)),
-                        checkpoint_steps=tuple(checkpoints), device=args.device, action_mask=args.action_mask,
-                        egocentric=args.egocentric, n_envs=args.n_envs, batch_size=args.batch_size,
-                        train_freq=args.train_freq, keep_best=args.keep_best, seed=seed)
+        cfg = DeepQNetworkSettings(total_timesteps=timesteps, learning_rate=args.learning_rate,
+                        target_network_sync_interval_steps=args.target_update, replay_buffer_capacity=args.buffer_size,
+                        random_warmup_steps=min(DeepQNetworkSettings.random_warmup_steps, timesteps // 5),
+                        evaluate_every_steps=evaluate_every_steps, evaluation_episode_count=2 if args.quick else args.eval_episodes,
+                        log_every_steps=max(1, min(DeepQNetworkSettings.log_every_steps, timesteps // 10)),
+                        checkpoint_steps=tuple(checkpoints), device=args.device, use_action_mask=args.action_mask,
+                        use_egocentric_observation=args.egocentric, parallel_env_count=args.n_envs, batch_size=args.batch_size,
+                        steps_per_network_update=args.train_freq, keep_best_checkpoint=args.keep_best, seed=seed)
         tasks.append({"spec": spec, "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / f"seed{seed}"),
                       "test_maps": test_maps})
     results = run_parallel(train_one, tasks, workers=args.workers)
 
-    optimum = optimal_steps_by_start(get_map(spec["map"])) if test_maps is None else None
+    optimum = optimal_steps_for_each_start(get_room_layout(spec["map"])) if test_maps is None else None
     table = summarize_seeds(results, optimum)
     save_dataframe_csv(table, run_dir / "summary.csv")
     refs = baseline_references(spec, test_maps)

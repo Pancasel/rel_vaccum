@@ -25,17 +25,23 @@ from experiments.common import make_env_factory, resolve_out
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from baselines import GreedyBFSAgent, RandomWalkAgent, ZigzagAgent  # noqa: E402
-from deep.dqn import DQNAgent, DQNConfig  # noqa: E402
-from env.maps import FIXED_MAPS, generate_map_set, get_map  # noqa: E402
-from env.render import annotate_frame, compose_side_by_side, compose_vertical, save_gif  # noqa: E402
-from env.vacuum_env import RandomMapVacuumEnv, VacuumEnv  # noqa: E402
-from experiments.evaluate import run_episode  # noqa: E402
+from agents.baselines import GreedyNearestDirtyCellAgent, RandomWalkAgent, ZigzagSweepAgent  # noqa: E402
+from agents.deep_q_network.deep_q_network_agent import DeepQNetworkAgent  # noqa: E402
+from agents.deep_q_network.deep_q_network_settings import DeepQNetworkSettings  # noqa: E402
+from environment.room_layouts import FIXED_ROOM_LAYOUTS, get_room_layout  # noqa: E402
+from environment.random_room_generator import generate_distinct_rooms  # noqa: E402
+from environment.rendering.frame_drawing import add_caption_to_frame  # noqa: E402
+from environment.rendering.frame_layout import place_frames_side_by_side, stack_frames_vertically  # noqa: E402
+from environment.rendering.gif_recording import save_gif  # noqa: E402
+from environment.random_room_vacuum_env import RandomRoomVacuumCleaningEnv  # noqa: E402
+from environment.vacuum_cleaning_env import VacuumCleaningEnv  # noqa: E402
+from evaluation.episode_runner import run_single_episode  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_visit_heatmaps, write_text  # noqa: E402
-from tabular.common import TabularAgent, TabularConfig  # noqa: E402
-from tabular.q_learning import QLearningAgent  # noqa: E402
-from tabular.state_space import build_state_graph  # noqa: E402
-from tabular.value_iteration import VIAgent, value_iteration  # noqa: E402
+from agents.tabular.tabular_agent_base import TabularAgentBase  # noqa: E402
+from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
+from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
+from agents.tabular.state_transition_graph import build_state_transition_graph  # noqa: E402
+from agents.tabular.value_iteration import ValueIterationPolicyAgent, run_value_iteration  # noqa: E402
 from project_utils.project_paths import PROJECT_ROOT  # noqa: E402
 
 FPS = 6
@@ -49,22 +55,22 @@ DEFAULT_DQN_MAP = "results/deep/dqn/furniture_8x8/seed0"
 DEFAULT_DQN_RANDOM = "results/deep/dqn/rand8x8_d0.15_K0_mask_ego_ne16_bs256_tf16/seed0"
 
 
-def rollout(agent: Any, env: VacuumEnv, title: str, seed: int, start: tuple[int, int] | None,
-            cell_px: int) -> tuple[list[np.ndarray], dict[str, Any]]:
+def rollout(agent: Any, env: VacuumCleaningEnv, title: str, seed: int, start: tuple[int, int] | None,
+            cell_pixel_size: int) -> tuple[list[np.ndarray], dict[str, Any]]:
     """Chạy một episode, trả các khung hình có chú thích và số liệu cuối."""
     if hasattr(agent, "reset"):
         agent.reset()
     obs, info = env.reset(seed=seed, options={"start": start} if start else None)
-    from env.render import render_rgb
+    from environment.rendering.frame_drawing import draw_rgb_frame
 
     trail = [info["position"]]
 
     def frame(info: dict[str, Any], status: str = "") -> np.ndarray:
-        img = render_rgb(env.grid, info["position"], env.cleaned, cell_px=cell_px, trail=trail[-30:])
+        img = draw_rgb_frame(env.grid, info["position"], env.cleaned, cell_pixel_size=cell_pixel_size, recent_positions=trail[-30:])
         # Hai dòng ngắn để vừa chiều rộng của phòng nhỏ.
         lines = [f"bước {info['steps']} · dọn {info['coverage']:.0%}",
                  f"lặp {info['n_revisit']} · đụng {info['n_collisions']}{status}"]
-        return annotate_frame(img, title, lines, font_size=max(11, cell_px // 3))
+        return add_caption_to_frame(img, title, lines, font_size=max(11, cell_pixel_size // 3))
 
     frames = [frame(info)]
     terminated = truncated = False
@@ -87,52 +93,52 @@ def synchronized(frame_lists: list[list[np.ndarray]]) -> list[np.ndarray]:
     indices = list(range(n))
     if n > MAX_GIF_FRAMES:
         indices = sorted(set(np.linspace(0, n - 1, MAX_GIF_FRAMES).round().astype(int).tolist()))
-    return [compose_side_by_side([f[min(t, len(f) - 1)] for f in frame_lists]) for t in indices]
+    return [place_frames_side_by_side([f[min(t, len(f) - 1)] for f in frame_lists]) for t in indices]
 
 
 def race(agents: dict[str, Any], grid: np.ndarray, start: tuple[int, int] | None, seed: int, out_path: Path,
-         cell_px: int = 32) -> list[dict[str, Any]]:
+         cell_pixel_size: int = 32) -> list[dict[str, Any]]:
     """"Cuộc đua" nhiều robot trên cùng căn phòng; lưu GIF và ảnh khung cuối."""
     frame_lists, stats = [], []
     for name, agent in agents.items():
-        frames, s = rollout(agent, VacuumEnv(grid), name, seed, start, cell_px)
+        frames, s = rollout(agent, VacuumCleaningEnv(grid), name, seed, start, cell_pixel_size)
         frame_lists.append(frames)
         stats.append(s)
     frames = synchronized(frame_lists)
-    save_gif(frames, out_path, fps=FPS, last_frame_hold=FPS * 2)
+    save_gif(frames, out_path, frames_per_second=FPS, last_frame_hold=FPS * 2)
     from PIL import Image
 
     Image.fromarray(frames[-1]).save(out_path.with_suffix(".png"))
     return stats
 
 
-def load_qtable(checkpoint_dir: Path, name: str) -> TabularAgent:
+def load_qtable(checkpoint_dir: Path, name: str) -> TabularAgentBase:
     path = checkpoint_dir / name
     if not path.exists():
         raise FileNotFoundError(
             f"Không thấy {path}. Hãy chạy trước: python -m experiments.run_tabular --map {SMALL_MAP} --start 0 0")
-    return TabularAgent.load(path)
+    return TabularAgentBase.load(path)
 
 
-def load_dqn(path: Path, hint: str) -> DQNAgent:
+def load_dqn(path: Path, hint: str) -> DeepQNetworkAgent:
     if not path.exists():
         raise FileNotFoundError(f"Không thấy {path}. Hãy chạy trước: {hint}")
-    return DQNAgent.load(path, device="cpu")  # suy luận rất nhẹ, không cần chiếm GPU/RAM của GPU
+    return DeepQNetworkAgent.load(path, device="cpu")  # suy luận rất nhẹ, không cần chiếm GPU/RAM của GPU
 
 
 def train_quick_models(model_dir: Path, map_name: str) -> dict[str, Path]:
     """--quick: huấn luyện mô hình tí hon (vài giây) để kiểm tra toàn bộ luồng demo."""
     q_dir = model_dir / "qtable"
-    agent = QLearningAgent(get_map(SMALL_MAP), TabularConfig(n_episodes=300, eval_every=150, eval_episodes=1,
+    agent = QLearningAgent(get_room_layout(SMALL_MAP), TabularSettings(episode_count=300, evaluate_every_episodes=150, evaluation_episode_count=1,
                                                              checkpoint_episodes=(0, 50, 150)))
     agent.train(make_env_factory(SMALL_MAP, start=SMALL_START), log_dir=q_dir)
-    cfg = dict(total_timesteps=600, learning_starts=100, batch_size=16, buffer_size=1000, eval_every_steps=600,
-               eval_episodes=1, log_every_steps=100)
-    grid = get_map(map_name)
-    dqn_map = DQNAgent((3, *grid.shape), DQNConfig(checkpoint_steps=(0, 150), **cfg))
+    cfg = dict(total_timesteps=600, random_warmup_steps=100, batch_size=16, replay_buffer_capacity=1000, evaluate_every_steps=600,
+               evaluation_episode_count=1, log_every_steps=100)
+    grid = get_room_layout(map_name)
+    dqn_map = DeepQNetworkAgent((3, *grid.shape), DeepQNetworkSettings(checkpoint_steps=(0, 150), **cfg))
     dqn_map.train(make_env_factory(map_name), model_dir / "dqn_map")
-    dqn_rand = DQNAgent((3, 8, 8), DQNConfig(action_mask=True, egocentric=True, **cfg))
-    dqn_rand.train(functools.partial(RandomMapVacuumEnv, 8, 8, 0.15), model_dir / "dqn_random")
+    dqn_rand = DeepQNetworkAgent((3, 8, 8), DeepQNetworkSettings(use_action_mask=True, use_egocentric_observation=True, **cfg))
+    dqn_rand.train(functools.partial(RandomRoomVacuumCleaningEnv, 8, 8, 0.15), model_dir / "dqn_random")
     return {"qtable": q_dir / "checkpoints", "dqn_map": model_dir / "dqn_map", "dqn_random": model_dir / "dqn_random"}
 
 
@@ -149,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Tạo GIF/hình trình diễn robot hút bụi.")
     parser.add_argument("--what", nargs="+", default=["all"],
                         choices=["all", "compare", "progress", "heatmap", "unseen"])
-    parser.add_argument("--map", default="furniture_8x8", choices=sorted(FIXED_MAPS))
+    parser.add_argument("--map", default="furniture_8x8", choices=sorted(FIXED_ROOM_LAYOUTS))
     parser.add_argument("--start", type=int, nargs=2, default=[0, 0])
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--qtable-dir", default=DEFAULT_QTABLE, help="thư mục checkpoints của Q-learning (4x4)")
@@ -169,29 +175,29 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     else:
         paths = {"qtable": PROJECT_ROOT / args.qtable_dir, "dqn_map": PROJECT_ROOT / args.dqn_map_dir,
                  "dqn_random": PROJECT_ROOT / args.dqn_random_dir}
-    grid, start = get_map(args.map), tuple(args.start)
+    grid, start = get_room_layout(args.map), tuple(args.start)
     hint_map = f"python -m experiments.run_deep --map {args.map} --timesteps 500000"
     rows: list[dict[str, Any]] = []
 
     if "compare" in what:
         dqn = load_dqn(paths["dqn_map"] / "model.pt", hint_map)
-        agents = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagAgent(),
-                  "greedy_bfs": GreedyBFSAgent(), "DQN": dqn}
+        agents = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagSweepAgent(),
+                  "greedy_bfs": GreedyNearestDirtyCellAgent(), "DQN": dqn}
         rows += [{"demo": f"compare_{args.map}", **s} for s in
                  race(agents, grid, start, args.seed, out / f"compare_{args.map}.gif")]
-        small = get_map(SMALL_MAP)
-        vi = value_iteration(build_state_graph(small))
-        agents_small = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagAgent(),
-                        "greedy_bfs": GreedyBFSAgent(), "Q-learning": load_qtable(paths["qtable"], "final.pkl"),
-                        "tối ưu (VI)": VIAgent(vi)}
+        small = get_room_layout(SMALL_MAP)
+        vi = run_value_iteration(build_state_transition_graph(small))
+        agents_small = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagSweepAgent(),
+                        "greedy_bfs": GreedyNearestDirtyCellAgent(), "Q-learning": load_qtable(paths["qtable"], "final.pkl"),
+                        "tối ưu (VI)": ValueIterationPolicyAgent(vi)}
         rows += [{"demo": f"compare_{SMALL_MAP}", **s} for s in
-                 race(agents_small, small, SMALL_START, args.seed, out / f"compare_{SMALL_MAP}.gif", cell_px=48)]
+                 race(agents_small, small, SMALL_START, args.seed, out / f"compare_{SMALL_MAP}.gif", cell_pixel_size=48)]
 
     if "progress" in what:
         q_seq = checkpoint_sequence(paths["qtable"], "ep*.pkl", "episode") + [("đã học xong", paths["qtable"] / "final.pkl")]
-        agents = {label: TabularAgent.load(p) for label, p in q_seq}
+        agents = {label: TabularAgentBase.load(p) for label, p in q_seq}
         rows += [{"demo": "progress_qlearning", **s} for s in
-                 race(agents, get_map(SMALL_MAP), SMALL_START, args.seed, out / "progress_qlearning.gif", cell_px=48)]
+                 race(agents, get_room_layout(SMALL_MAP), SMALL_START, args.seed, out / "progress_qlearning.gif", cell_pixel_size=48)]
         d_seq = checkpoint_sequence(paths["dqn_map"] / "checkpoints", "step*.pt", "bước")
         d_seq = [(label, p) for label, p in d_seq] + [("đã học xong", paths["dqn_map"] / "model.pt")]
         agents = {label: load_dqn(p, hint_map) for label, p in d_seq}
@@ -200,11 +206,11 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     if "heatmap" in what:
         dqn = load_dqn(paths["dqn_map"] / "model.pt", hint_map)
-        agents = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagAgent(),
-                  "greedy_bfs": GreedyBFSAgent(), "DQN": dqn}
+        agents = {"random_walk": RandomWalkAgent(seed=args.seed), "zigzag": ZigzagSweepAgent(),
+                  "greedy_bfs": GreedyNearestDirtyCellAgent(), "DQN": dqn}
         visits, subtitles = {}, {}
         for name, agent in agents.items():
-            res = run_episode(agent, VacuumEnv(grid), seed=args.seed, record_visits=True,
+            res = run_single_episode(agent, VacuumCleaningEnv(grid), seed=args.seed, record_visit_counts=True,
                               reset_options={"start": start})
             visits[name] = res["visits"]
             subtitles[name] = f"{res['steps']} bước, lặp {res['redundancy']:.0%}"
@@ -214,20 +220,20 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
         dqn = load_dqn(paths["dqn_random"] / "model.pt",
                        "python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 "
                        "--batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best")
-        rooms = generate_map_set(8, 8, 0.15, 3, seed=UNSEEN_SEED)
+        rooms = generate_distinct_rooms(8, 8, 0.15, 3, seed=UNSEEN_SEED)
         room_frames = []
         for i, room in enumerate(rooms):
             lists = []
-            for name, agent in (("DQN (phòng lạ)", dqn), ("greedy_bfs", GreedyBFSAgent())):
-                frames, s = rollout(agent, VacuumEnv(room), f"phòng {i + 1}: {name}", args.seed, None, 32)
+            for name, agent in (("DQN (phòng lạ)", dqn), ("greedy_bfs", GreedyNearestDirtyCellAgent())):
+                frames, s = rollout(agent, VacuumCleaningEnv(room), f"phòng {i + 1}: {name}", args.seed, None, 32)
                 lists.append(frames)
                 rows.append({"demo": f"unseen_room{i + 1}", **s})
             room_frames.append(lists)
         n = max(len(f) for lists in room_frames for f in lists)
         indices = range(n) if n <= MAX_GIF_FRAMES else sorted(set(np.linspace(0, n - 1, MAX_GIF_FRAMES).round().astype(int)))
-        frames = [compose_vertical([compose_side_by_side([f[min(t, len(f) - 1)] for f in lists])
+        frames = [stack_frames_vertically([place_frames_side_by_side([f[min(t, len(f) - 1)] for f in lists])
                                     for lists in room_frames]) for t in indices]
-        save_gif(frames, out / "unseen_rooms.gif", fps=FPS, last_frame_hold=FPS * 2)
+        save_gif(frames, out / "unseen_rooms.gif", frames_per_second=FPS, last_frame_hold=FPS * 2)
 
     table = pd.DataFrame(rows)
     if not table.empty:

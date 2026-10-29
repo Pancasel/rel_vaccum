@@ -19,10 +19,12 @@ from experiments.common import add_common_args, resolve_out, run_parallel
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from baselines import make_baseline  # noqa: E402
-from deep.dqn import DQNAgent, DQNConfig  # noqa: E402
-from env.maps import generate_map_set  # noqa: E402
-from experiments.evaluate import evaluate_on_maps, summarize  # noqa: E402
+from agents.baselines import create_baseline_agent  # noqa: E402
+from agents.deep_q_network.deep_q_network_agent import DeepQNetworkAgent  # noqa: E402
+from agents.deep_q_network.deep_q_network_settings import DeepQNetworkSettings  # noqa: E402
+from environment.random_room_generator import generate_distinct_rooms  # noqa: E402
+from evaluation.agent_evaluation import evaluate_agent_on_rooms  # noqa: E402
+from evaluation.metric_summary import summarize_metrics  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_bar_with_error, plot_lines_with_error, write_text  # noqa: E402
 from experiments.run_deep import (TEST_SET_SEED, TRAIN_POOL_SEED, check_reward_args, reward_config_of,  # noqa: E402
                                   train_one, train_tag, variant_tag)
@@ -60,27 +62,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def dqn_cfg(timesteps: int, seed: int, quick: bool, device: str, args: argparse.Namespace) -> dict[str, Any]:
     """Cấu hình DQN chung cho E3/E4 (giống run_deep để kết quả so sánh được)."""
-    cfg = DQNConfig(total_timesteps=timesteps, learning_starts=min(DQNConfig.learning_starts, timesteps // 5),
-                    eval_every_steps=max(1, timesteps // 20), eval_episodes=2 if quick else 20,
-                    log_every_steps=max(1, min(DQNConfig.log_every_steps, timesteps // 10)), device=device,
-                    action_mask=args.action_mask, egocentric=args.egocentric, n_envs=args.n_envs,
-                    batch_size=args.batch_size, train_freq=args.train_freq, keep_best=args.keep_best, seed=seed)
+    cfg = DeepQNetworkSettings(total_timesteps=timesteps, random_warmup_steps=min(DeepQNetworkSettings.random_warmup_steps, timesteps // 5),
+                    evaluate_every_steps=max(1, timesteps // 20), evaluation_episode_count=2 if quick else 20,
+                    log_every_steps=max(1, min(DeepQNetworkSettings.log_every_steps, timesteps // 10)), device=device,
+                    use_action_mask=args.action_mask, use_egocentric_observation=args.egocentric, parallel_env_count=args.n_envs,
+                    batch_size=args.batch_size, steps_per_network_update=args.train_freq, keep_best_checkpoint=args.keep_best, seed=seed)
     return cfg.__dict__.copy()
 
 
 def evaluate_agents(test_maps: list[np.ndarray], dqn_dirs: list[tuple[int, Path]], seeds: list[int],
-                    device: str = "auto", reward_config: Any = None) -> pd.DataFrame:
+                    device: str = "auto", reward_settings: Any = None) -> pd.DataFrame:
     """Mọi agent trên cùng tập bản đồ test; mỗi seed cho một giá trị trung bình (để lấy std qua seed)."""
     rows = []
     for seed in seeds:
         for name in BASELINE_NAMES:
-            df = evaluate_on_maps(make_baseline(name, seed=seed), test_maps, EPISODES_PER_TEST_MAP, seed=seed,
-                                  reward_config=reward_config)
-            rows.append({"agent": name, "seed": seed, **summarize(df).iloc[0].to_dict()})
+            df = evaluate_agent_on_rooms(create_baseline_agent(name, seed=seed), test_maps, EPISODES_PER_TEST_MAP, seed=seed,
+                                  reward_settings=reward_settings)
+            rows.append({"agent": name, "seed": seed, **summarize_metrics(df).iloc[0].to_dict()})
     for seed, log_dir in dqn_dirs:
-        agent = DQNAgent.load(log_dir / "model.pt", device=device)
-        df = evaluate_on_maps(agent, test_maps, EPISODES_PER_TEST_MAP, seed=seed, reward_config=reward_config)
-        rows.append({"agent": "dqn", "seed": seed, **summarize(df).iloc[0].to_dict()})
+        agent = DeepQNetworkAgent.load(log_dir / "model.pt", device=device)
+        df = evaluate_agent_on_rooms(agent, test_maps, EPISODES_PER_TEST_MAP, seed=seed, reward_settings=reward_settings)
+        rows.append({"agent": "dqn", "seed": seed, **summarize_metrics(df).iloc[0].to_dict()})
     return pd.DataFrame(rows)
 
 
@@ -102,12 +104,12 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
     for density in args.densities:
         if density == 0.0:
             # Mật độ 0 chỉ có đúng một bản đồ (phòng trống): train và test buộc phải trùng nhau.
-            test_maps, exclude = [np.zeros((h, w), dtype=np.int8)], None
+            test_maps, excluded_rooms = [np.zeros((h, w), dtype=np.int8)], None
         else:
-            test_maps = generate_map_set(h, w, density, n_test, seed=1000 + int(round(100 * density)))
-            exclude = test_maps
+            test_maps = generate_distinct_rooms(h, w, density, n_test, seed=1000 + int(round(100 * density)))
+            excluded_rooms = test_maps
         test_sets[density] = test_maps
-        spec = {"map": None, "random": (h, w, density), "pool": None, "exclude": exclude, "reward": args.reward,
+        spec = {"map": None, "random": (h, w, density), "pool": None, "exclude": excluded_rooms, "reward": args.reward,
                 "shaping_coef": args.shaping_coef, "start": None}
         for seed in seeds:
             log_dir = out / "density" / f"{h}x{w}_d{density:g}{args.tag}" / f"seed{seed}"
@@ -137,10 +139,10 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
     density = args.density
     n_test = 3 if args.quick else (args.n_test_maps or 50)
     k_values = ([k for k in args.k_values if k <= 3] or [1]) if args.quick else args.k_values
-    test_maps = generate_map_set(h, w, density, n_test, seed=TEST_SET_SEED)
+    test_maps = generate_distinct_rooms(h, w, density, n_test, seed=TEST_SET_SEED)
     tasks, meta = [], []
     for k in k_values:
-        pool = generate_map_set(h, w, density, k, seed=TRAIN_POOL_SEED, exclude=test_maps) if k > 0 else None
+        pool = generate_distinct_rooms(h, w, density, k, seed=TRAIN_POOL_SEED, excluded_rooms=test_maps) if k > 0 else None
         spec = {"map": None, "random": (h, w, density), "pool": pool, "exclude": test_maps, "reward": args.reward,
                 "shaping_coef": args.shaping_coef, "start": None}
         for seed in seeds:
@@ -151,14 +153,14 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
     run_parallel(train_one, tasks, workers=args.workers)
     rows = []
     for k, seed, log_dir, pool in meta:
-        agent = DQNAgent.load(log_dir / "model.pt", device=args.device)
+        agent = DeepQNetworkAgent.load(log_dir / "model.pt", device=args.device)
         splits = {"test (chưa gặp)": test_maps}
         if pool is not None:
             splits["train (đã gặp)"] = pool[:n_test]
         for split, maps in splits.items():
-            df = evaluate_on_maps(agent, maps, EPISODES_PER_TEST_MAP, seed=seed,
-                                  reward_config=reward_config_of(vars(args)))
-            rows.append({"K": "∞" if k == 0 else str(k), "split": split, "seed": seed, **summarize(df).iloc[0].to_dict()})
+            df = evaluate_agent_on_rooms(agent, maps, EPISODES_PER_TEST_MAP, seed=seed,
+                                  reward_settings=reward_config_of(vars(args)))
+            rows.append({"K": "∞" if k == 0 else str(k), "split": split, "seed": seed, **summarize_metrics(df).iloc[0].to_dict()})
     table = across_seeds(pd.DataFrame(rows), ["K", "split"])
     plot_bar_with_error(table, "K", "coverage_mean", "coverage_mean_sd", out / "figures" / f"e4_generalization_{h}x{w}{args.tag}.png",
                         f"E4: DQN huấn luyện trên K phòng, đo trên phòng đã gặp và chưa gặp ({h}x{w}, mật độ {density:g})",

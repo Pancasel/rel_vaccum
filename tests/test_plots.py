@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from env.maps import get_map
+from environment.room_layouts import get_room_layout
 from experiments.plots import (color_for, df_to_markdown_table, load_runs, plot_bar_with_error, plot_learning_curve,
                                plot_learning_curves, plot_lines_with_error, plot_q_convergence, plot_state_explosion,
                                plot_tabular_scaling, plot_visit_heatmaps, write_text)
@@ -59,7 +59,7 @@ def test_state_explosion_and_scaling(tmp_path: Path) -> None:
 
 
 def test_visit_heatmaps(tmp_path: Path) -> None:
-    grid = get_map("obstacle_4x4")
+    grid = get_room_layout("obstacle_4x4")
     visits = {"a": np.ones((4, 4), dtype=int), "b": np.arange(16).reshape(4, 4)}
     assert plot_visit_heatmaps(visits, grid, tmp_path / "h.png", {"a": "x"}).exists()
 

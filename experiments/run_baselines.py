@@ -13,9 +13,10 @@ from experiments.common import add_common_args, make_env_factory, parse_start, r
 
 import pandas as pd  # noqa: E402
 
-from baselines import BASELINES, make_baseline  # noqa: E402
-from env.maps import FIXED_MAPS  # noqa: E402
-from experiments.evaluate import evaluate, summarize  # noqa: E402
+from agents.baselines import BASELINE_AGENT_CLASSES, create_baseline_agent  # noqa: E402
+from environment.room_layouts import FIXED_ROOM_LAYOUTS  # noqa: E402
+from evaluation.agent_evaluation import evaluate_agent  # noqa: E402
+from evaluation.metric_summary import summarize_metrics  # noqa: E402
 from experiments.plots import df_to_markdown_table  # noqa: E402
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
@@ -24,8 +25,8 @@ DEFAULT_MAPS = ["empty_3x3", "obstacle_4x4", "furniture_8x8"]
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Chạy baseline (random_walk, zigzag, greedy_bfs).")
-    parser.add_argument("--maps", nargs="+", default=DEFAULT_MAPS, choices=sorted(FIXED_MAPS))
-    parser.add_argument("--agents", nargs="+", default=list(BASELINES), choices=list(BASELINES))
+    parser.add_argument("--maps", nargs="+", default=DEFAULT_MAPS, choices=sorted(FIXED_ROOM_LAYOUTS))
+    parser.add_argument("--agents", nargs="+", default=list(BASELINE_AGENT_CLASSES), choices=list(BASELINE_AGENT_CLASSES))
     parser.add_argument("--episodes", type=int, default=20, help="số episode mỗi seed")
     parser.add_argument("--start", nargs="+", default=["random"], help="'random' hoặc R C")
     add_common_args(parser, "results/baselines")
@@ -43,14 +44,14 @@ def run(args: argparse.Namespace) -> pd.DataFrame:
         factory = make_env_factory(map_name, start=start)
         for agent_name in args.agents:
             for seed in seeds:
-                df = evaluate(make_baseline(agent_name, seed=seed), factory, episodes, seed=seed)
+                df = evaluate_agent(create_baseline_agent(agent_name, seed=seed), factory, episodes, seed=seed)
                 save_dataframe_csv(df, out / map_name / agent_name / f"seed{seed}.csv")
                 df.insert(0, "seed", seed)
                 df.insert(0, "agent", agent_name)
                 df.insert(0, "map", map_name)
                 all_rows.append(df)
     full = pd.concat(all_rows, ignore_index=True)
-    summary = summarize(full, ["map", "agent"])
+    summary = summarize_metrics(full, ["map", "agent"])
     save_dataframe_csv(summary, out / "summary.csv")
     save_config_with_metadata({"maps": args.maps, "agents": args.agents, "seeds": seeds, "episodes": episodes,
                       "start": start}, out / "config.json")

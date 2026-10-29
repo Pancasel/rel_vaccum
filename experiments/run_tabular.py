@@ -12,35 +12,37 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from experiments.common import (add_common_args, make_env_factory, optimal_steps_by_start, optimal_value,
-                                parse_start, reference_steps, resolve_out, run_parallel)
+from experiments.common import add_common_args, make_env_factory, parse_start, resolve_out, run_parallel
+from evaluation.optimal_reference import optimal_steps_for_each_start, optimal_value_of_start, reference_step_counts
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from env.maps import FIXED_MAPS, get_map  # noqa: E402
-from env.vacuum_env import RewardConfig  # noqa: E402
-from experiments.evaluate import evaluate, summarize  # noqa: E402
+from environment.room_layouts import FIXED_ROOM_LAYOUTS, get_room_layout  # noqa: E402
+from environment.reward_settings import RewardSettings  # noqa: E402
+from evaluation.agent_evaluation import evaluate_agent  # noqa: E402
+from evaluation.metric_summary import summarize_metrics  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_learning_curves, plot_q_convergence  # noqa: E402
-from tabular.common import TabularAgent, TabularConfig  # noqa: E402
-from tabular.q_learning import QLearningAgent  # noqa: E402
+from agents.tabular.tabular_agent_base import TabularAgentBase  # noqa: E402
+from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
+from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
-ALGOS: dict[str, type[TabularAgent]] = {"q_learning": QLearningAgent}
+ALGOS: dict[str, type[TabularAgentBase]] = {"q_learning": QLearningAgent}
 FINAL_EVAL_EPISODES_RANDOM_START: int = 50
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Huấn luyện Q-learning dạng bảng.")
     parser.add_argument("--algos", nargs="+", default=["q_learning"], choices=list(ALGOS))
-    parser.add_argument("--map", default="obstacle_4x4", choices=sorted(FIXED_MAPS))
+    parser.add_argument("--map", default="obstacle_4x4", choices=sorted(FIXED_ROOM_LAYOUTS))
     parser.add_argument("--start", nargs="+", default=["0", "0"], help="'random' hoặc R C (mặc định 0 0)")
     parser.add_argument("--episodes", type=int, default=50_000)
     parser.add_argument("--alpha", type=float, default=0.5)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--epsilon-end", type=float, default=0.05)
     parser.add_argument("--state-mode", default="full", choices=["full", "position_only"])
-    parser.add_argument("--reward", default="dense", choices=list(RewardConfig.PRESETS))
+    parser.add_argument("--reward", default="dense", choices=list(RewardSettings.PRESETS))
     parser.add_argument("--eval-every", type=int, default=None, help="mặc định: episodes/200")
     parser.add_argument("--eval-episodes", type=int, default=None, help="mặc định: 1 nếu start cố định, 10 nếu ngẫu nhiên")
     parser.add_argument("--time-budget-min", type=float, default=None)
@@ -54,10 +56,10 @@ def train_one(algo: str, map_name: str, start: tuple[int, int] | None, reward: s
               log_dir: str) -> dict[str, Any]:
     """Huấn luyện một (thuật toán, seed); trả log và kết quả đánh giá cuối (chạy được ở tiến trình con)."""
     factory = make_env_factory(map_name, start=start, reward=reward)
-    agent = ALGOS[algo](get_map(map_name), TabularConfig(**cfg))
+    agent = ALGOS[algo](get_room_layout(map_name), TabularSettings(**cfg))
     train_log, eval_log = agent.train(factory, log_dir=log_dir)
     n_final = 1 if start is not None else FINAL_EVAL_EPISODES_RANDOM_START
-    final = evaluate(agent, factory, n_final, seed=1000 + cfg["seed"], gamma=cfg["gamma"])
+    final = evaluate_agent(agent, factory, n_final, seed=1000 + cfg["seed"], gamma=cfg["gamma"])
     save_dataframe_csv(final, Path(log_dir) / f"seed{cfg['seed']}_final.csv")
     return {"algo": algo, "seed": cfg["seed"], "train": train_log, "eval": eval_log, "final": final}
 
@@ -81,7 +83,7 @@ def summarize_runs(results: list[dict[str, Any]], optimum: dict[tuple[int, int],
     rows = []
     for res in results:
         final = res["final"].copy()
-        row = {"algo": res["algo"], "seed": res["seed"], **summarize(final).iloc[0].to_dict()}
+        row = {"algo": res["algo"], "seed": res["seed"], **summarize_metrics(final).iloc[0].to_dict()}
         if optimum is not None:
             done = final[final["terminated"]]
             opt = np.array([optimum[(r, c)] for r, c in zip(done["start_row"], done["start_col"])])
@@ -99,9 +101,9 @@ def summarize_runs(results: list[dict[str, Any]], optimum: dict[tuple[int, int],
 def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start: tuple[int, int] | None,
                  out_fig: Path) -> list[Path]:
     """Learning curve (coverage, số bước của chính sách tham lam) và hình hội tụ max Q(s0) về V*."""
-    grid = get_map(args.map)
+    grid = get_room_layout(args.map)
     eval_df = pd.concat([r["eval"].assign(seed=r["seed"], algo=r["algo"]) for r in results], ignore_index=True)
-    refs = reference_steps(grid, start)
+    refs = reference_step_counts(grid, start)
     tag = run_name(args.reward, args.state_mode)
     name = map_tag(args.map, start)
     start_txt = f"xuất phát {start}" if start else "xuất phát ngẫu nhiên"
@@ -112,7 +114,7 @@ def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start:
         f"{', '.join(args.algos)} trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
         hlines={"steps_mean": refs})]
     if start is not None and args.state_mode == "full":
-        v_star = optimal_value(grid, start, RewardConfig.from_name(args.reward), args.gamma)
+        v_star = optimal_value_of_start(grid, start, RewardSettings.from_name(args.reward), args.gamma)
         if v_star is not None:
             train_df = pd.concat([r["train"].assign(seed=r["seed"], algo=r["algo"]) for r in results],
                                  ignore_index=True)
@@ -127,26 +129,26 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     start = parse_start(args.start)
     seeds = args.seeds[:2] if args.quick else args.seeds
     episodes = max(20, args.episodes // 10) if args.quick else args.episodes
-    eval_every = args.eval_every or max(1, episodes // 200)
-    eval_episodes = args.eval_episodes or (1 if start is not None else 10)
+    evaluate_every_episodes = args.eval_every or max(1, episodes // 200)
+    evaluation_episode_count = args.eval_episodes or (1 if start is not None else 10)
     run_dir = out / args.reward / args.state_mode / map_tag(args.map, start)
     tasks = []
     for algo in args.algos:
         for seed in seeds:
-            cfg = TabularConfig(n_episodes=episodes, alpha=args.alpha, gamma=args.gamma, epsilon_end=args.epsilon_end,
-                                state_mode=args.state_mode, eval_every=eval_every, eval_episodes=eval_episodes,
-                                time_budget_min=args.time_budget_min,
+            cfg = TabularSettings(episode_count=episodes, alpha=args.alpha, gamma=args.gamma, epsilon_end=args.epsilon_end,
+                                state_mode=args.state_mode, evaluate_every_episodes=evaluate_every_episodes, evaluation_episode_count=evaluation_episode_count,
+                                time_budget_minutes=args.time_budget_min,
                                 checkpoint_episodes=tuple(e for e in args.checkpoints if e <= episodes), seed=seed)
             tasks.append({"algo": algo, "map_name": args.map, "start": start, "reward": args.reward,
                           "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / algo / f"seed{seed}")})
     results = run_parallel(train_one, tasks, workers=args.workers)
 
-    optimum = optimal_steps_by_start(get_map(args.map))
+    optimum = optimal_steps_for_each_start(get_room_layout(args.map))
     table = summarize_runs(results, optimum)
     save_dataframe_csv(table, run_dir / "summary.csv")
     figures = make_figures(results, args, start, out / "figures")
-    save_config_with_metadata({"args": vars(args), "episodes": episodes, "seeds": seeds, "eval_every": eval_every,
-                      "eval_episodes": eval_episodes, "start": start}, run_dir / "config.json")
+    save_config_with_metadata({"args": vars(args), "episodes": episodes, "seeds": seeds, "eval_every": evaluate_every_episodes,
+                      "eval_episodes": evaluation_episode_count, "start": start}, run_dir / "config.json")
     print(df_to_markdown_table(table))
     for path in figures:
         print(f"Hình: {path}")
