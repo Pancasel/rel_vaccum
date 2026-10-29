@@ -12,7 +12,7 @@ import json
 import time
 
 from evaluation.optimal_reference import can_compute_exact_optimum
-from experiments.common import resolve_out
+from experiments.shared.command_line_options import resolve_output_directory
 
 import pandas as pd  # noqa: E402
 
@@ -20,7 +20,7 @@ from agents.baselines import GreedyNearestDirtyCellAgent, ZigzagSweepAgent  # no
 from environment.room_layouts import FIXED_ROOM_LAYOUTS, list_free_cells, get_room_layout  # noqa: E402
 from environment.vacuum_cleaning_env import VacuumCleaningEnv  # noqa: E402
 from evaluation.episode_runner import run_single_episode  # noqa: E402
-from experiments.plots import df_to_markdown_table  # noqa: E402
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table  # noqa: E402
 from agents.tabular.state_transition_graph import build_state_transition_graph, minimum_steps_to_clean_all  # noqa: E402
 from agents.tabular.value_iteration import follow_optimal_policy, save_value_iteration_result, run_value_iteration  # noqa: E402
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
@@ -68,7 +68,7 @@ def solve_map(map_name: str, gamma: float) -> tuple[pd.DataFrame, dict, object]:
 
 def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
     args = build_parser().parse_args(argv)
-    out = resolve_out(args.out)
+    out = resolve_output_directory(args.out)
     maps = ["empty_3x3"] if args.quick else args.maps
     tables: dict[str, pd.DataFrame] = {}
     for map_name in maps:
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
         tables[map_name] = table
         print(f"\n## {map_name}: {meta['n_states']} trạng thái, {meta['n_iterations']} vòng lặp, "
               f"{meta['runtime_s']} s")
-        print(df_to_markdown_table(table))
+        print(dataframe_to_markdown_table(table))
     save_config_with_metadata({"maps": maps, "gamma": args.gamma}, out / "config.json")
     return tables
 

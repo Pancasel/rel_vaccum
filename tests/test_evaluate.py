@@ -96,10 +96,10 @@ def test_summarize_values() -> None:
 def test_run_parallel_order_and_env_restored() -> None:
     import os
 
-    from experiments.common import run_parallel
+    from experiments.shared.parallel_execution import run_tasks_in_parallel
 
     before = os.environ.get("OMP_NUM_THREADS")
     tasks = [{"i": i} for i in range(4)]
-    assert run_parallel(dict, tasks, workers=2) == tasks  # dict(**task) == task, giữ đúng thứ tự
-    assert run_parallel(dict, tasks, workers=1) == tasks
+    assert run_tasks_in_parallel(dict, tasks, workers=2) == tasks  # dict(**task) == task, giữ đúng thứ tự
+    assert run_tasks_in_parallel(dict, tasks, workers=1) == tasks
     assert os.environ.get("OMP_NUM_THREADS") == before

@@ -9,8 +9,8 @@
 - demo_summary.md                : bảng số liệu của các GIF, để dán vào slide
 
 Ví dụ:
-    python -m experiments.make_demo                 # dùng mô hình trong results/ (chạy run_tabular, run_deep trước)
-    python -m experiments.make_demo --quick         # tự huấn luyện mô hình tí hon để kiểm tra luồng
+    python -m experiments.make_demo_gifs                 # dùng mô hình trong results/ (chạy run_tabular_q_learning, run_deep_q_network trước)
+    python -m experiments.make_demo_gifs --quick         # tự huấn luyện mô hình tí hon để kiểm tra luồng
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ import functools
 from pathlib import Path
 from typing import Any
 
-from experiments.common import make_env_factory, resolve_out
+from experiments.shared.environment_factories import make_environment_factory
+from experiments.shared.command_line_options import resolve_output_directory
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -36,7 +37,8 @@ from environment.rendering.gif_recording import save_gif  # noqa: E402
 from environment.random_room_vacuum_env import RandomRoomVacuumCleaningEnv  # noqa: E402
 from environment.vacuum_cleaning_env import VacuumCleaningEnv  # noqa: E402
 from evaluation.episode_runner import run_single_episode  # noqa: E402
-from experiments.plots import df_to_markdown_table, plot_visit_heatmaps, write_text  # noqa: E402
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table, write_text_file  # noqa: E402
+from experiments.plotting.visit_heatmap_plots import plot_visit_heatmaps  # noqa: E402
 from agents.tabular.tabular_agent_base import TabularAgentBase  # noqa: E402
 from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
 from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
@@ -116,7 +118,7 @@ def load_qtable(checkpoint_dir: Path, name: str) -> TabularAgentBase:
     path = checkpoint_dir / name
     if not path.exists():
         raise FileNotFoundError(
-            f"Không thấy {path}. Hãy chạy trước: python -m experiments.run_tabular --map {SMALL_MAP} --start 0 0")
+            f"Không thấy {path}. Hãy chạy trước: python -m experiments.run_tabular_q_learning --map {SMALL_MAP} --start 0 0")
     return TabularAgentBase.load(path)
 
 
@@ -131,12 +133,12 @@ def train_quick_models(model_dir: Path, map_name: str) -> dict[str, Path]:
     q_dir = model_dir / "qtable"
     agent = QLearningAgent(get_room_layout(SMALL_MAP), TabularSettings(episode_count=300, evaluate_every_episodes=150, evaluation_episode_count=1,
                                                              checkpoint_episodes=(0, 50, 150)))
-    agent.train(make_env_factory(SMALL_MAP, start=SMALL_START), log_dir=q_dir)
+    agent.train(make_environment_factory(SMALL_MAP, start=SMALL_START), log_dir=q_dir)
     cfg = dict(total_timesteps=600, random_warmup_steps=100, batch_size=16, replay_buffer_capacity=1000, evaluate_every_steps=600,
                evaluation_episode_count=1, log_every_steps=100)
     grid = get_room_layout(map_name)
     dqn_map = DeepQNetworkAgent((3, *grid.shape), DeepQNetworkSettings(checkpoint_steps=(0, 150), **cfg))
-    dqn_map.train(make_env_factory(map_name), model_dir / "dqn_map")
+    dqn_map.train(make_environment_factory(map_name), model_dir / "dqn_map")
     dqn_rand = DeepQNetworkAgent((3, 8, 8), DeepQNetworkSettings(use_action_mask=True, use_egocentric_observation=True, **cfg))
     dqn_rand.train(functools.partial(RandomRoomVacuumCleaningEnv, 8, 8, 0.15), model_dir / "dqn_random")
     return {"qtable": q_dir / "checkpoints", "dqn_map": model_dir / "dqn_map", "dqn_random": model_dir / "dqn_random"}
@@ -168,7 +170,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
     args = build_parser().parse_args(argv)
-    out = resolve_out(args.out)
+    out = resolve_output_directory(args.out)
     what = {"compare", "progress", "heatmap", "unseen"} if "all" in args.what else set(args.what)
     if args.quick:
         paths = train_quick_models(out / "_quick_models", args.map)
@@ -176,7 +178,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
         paths = {"qtable": PROJECT_ROOT / args.qtable_dir, "dqn_map": PROJECT_ROOT / args.dqn_map_dir,
                  "dqn_random": PROJECT_ROOT / args.dqn_random_dir}
     grid, start = get_room_layout(args.map), tuple(args.start)
-    hint_map = f"python -m experiments.run_deep --map {args.map} --timesteps 500000"
+    hint_map = f"python -m experiments.run_deep_q_network --map {args.map} --timesteps 500000"
     rows: list[dict[str, Any]] = []
 
     if "compare" in what:
@@ -218,7 +220,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     if "unseen" in what:
         dqn = load_dqn(paths["dqn_random"] / "model.pt",
-                       "python -m experiments.run_deep --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 "
+                       "python -m experiments.run_deep_q_network --random-maps 8 8 0.15 --timesteps 2000000 --n-envs 16 "
                        "--batch-size 256 --train-freq 16 --action-mask --egocentric --keep-best")
         rooms = generate_distinct_rooms(8, 8, 0.15, 3, seed=UNSEEN_SEED)
         room_frames = []
@@ -237,8 +239,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     table = pd.DataFrame(rows)
     if not table.empty:
-        write_text("# Số liệu demo\n\n" + df_to_markdown_table(table), out / "demo_summary.md")
-        print(df_to_markdown_table(table))
+        write_text_file("# Số liệu demo\n\n" + dataframe_to_markdown_table(table), out / "demo_summary.md")
+        print(dataframe_to_markdown_table(table))
     for path in sorted(out.glob("*.gif")) + sorted(out.glob("*.png")):
         print(f"{path.name}: {path.stat().st_size / 1e6:.2f} MB")
     return table

@@ -1,9 +1,9 @@
 """T4.4: huấn luyện Q-learning dạng bảng trên nhiều seed, vẽ learning curve và hội tụ về V*.
 
 Ví dụ:
-    python -m experiments.run_tabular --map obstacle_4x4 --start 0 0 --workers 5
-    python -m experiments.run_tabular --map obstacle_4x4 --state-mode position_only
-    python -m experiments.run_tabular --quick
+    python -m experiments.run_tabular_q_learning --map obstacle_4x4 --start 0 0 --workers 5
+    python -m experiments.run_tabular_q_learning --map obstacle_4x4 --state-mode position_only
+    python -m experiments.run_tabular_q_learning --quick
 """
 
 from __future__ import annotations
@@ -12,7 +12,10 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from experiments.common import add_common_args, make_env_factory, parse_start, resolve_out, run_parallel
+from experiments.shared.command_line_options import add_shared_options, parse_start_option, resolve_output_directory
+from experiments.shared.environment_factories import make_environment_factory
+from experiments.shared.parallel_execution import run_tasks_in_parallel
+from experiments.shared.result_folder_naming import build_fixed_room_folder_name
 from evaluation.optimal_reference import optimal_steps_for_each_start, optimal_value_of_start, reference_step_counts
 
 import numpy as np  # noqa: E402
@@ -22,7 +25,8 @@ from environment.room_layouts import FIXED_ROOM_LAYOUTS, get_room_layout  # noqa
 from environment.reward_settings import RewardSettings  # noqa: E402
 from evaluation.agent_evaluation import evaluate_agent  # noqa: E402
 from evaluation.metric_summary import summarize_metrics  # noqa: E402
-from experiments.plots import df_to_markdown_table, plot_learning_curves, plot_q_convergence  # noqa: E402
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table  # noqa: E402
+from experiments.plotting.learning_curve_plots import plot_learning_curves, plot_q_convergence  # noqa: E402
 from agents.tabular.tabular_agent_base import TabularAgentBase  # noqa: E402
 from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
 from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
@@ -48,29 +52,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--time-budget-min", type=float, default=None)
     parser.add_argument("--checkpoints", type=int, nargs="*", default=[0, 1000, 10000],
                         help="các episode lưu bảng Q (cho demo 'robot học dần')")
-    add_common_args(parser, "results/tabular")
+    add_shared_options(parser, "results/tabular")
     return parser
 
 
 def train_one(algo: str, map_name: str, start: tuple[int, int] | None, reward: str, cfg: dict[str, Any],
               log_dir: str) -> dict[str, Any]:
     """Huấn luyện một (thuật toán, seed); trả log và kết quả đánh giá cuối (chạy được ở tiến trình con)."""
-    factory = make_env_factory(map_name, start=start, reward=reward)
+    factory = make_environment_factory(map_name, start=start, reward=reward)
     agent = ALGOS[algo](get_room_layout(map_name), TabularSettings(**cfg))
     train_log, eval_log = agent.train(factory, log_dir=log_dir)
     n_final = 1 if start is not None else FINAL_EVAL_EPISODES_RANDOM_START
     final = evaluate_agent(agent, factory, n_final, seed=1000 + cfg["seed"], gamma=cfg["gamma"])
     save_dataframe_csv(final, Path(log_dir) / f"seed{cfg['seed']}_final.csv")
     return {"algo": algo, "seed": cfg["seed"], "train": train_log, "eval": eval_log, "final": final}
-
-
-def map_tag(map_name: str, start: tuple[int, int] | None) -> str:
-    """Tên bản đồ kèm điểm xuất phát ('obstacle_4x4_s00'; xuất phát ngẫu nhiên giữ nguyên tên).
-
-    Vì sao: bảng Q gắn với điểm xuất phát; thiếu hậu tố thì lượt xuất phát cố định và lượt
-    xuất phát ngẫu nhiên ghi đè kết quả của nhau (cùng quy ước với run_deep).
-    """
-    return map_name + (f"_s{start[0]}{start[1]}" if start is not None else "")
 
 
 def run_name(reward: str, state_mode: str) -> str:
@@ -105,33 +100,33 @@ def make_figures(results: list[dict[str, Any]], args: argparse.Namespace, start:
     eval_df = pd.concat([r["eval"].assign(seed=r["seed"], algo=r["algo"]) for r in results], ignore_index=True)
     refs = reference_step_counts(grid, start)
     tag = run_name(args.reward, args.state_mode)
-    name = map_tag(args.map, start)
+    name = build_fixed_room_folder_name(args.map, start)
     start_txt = f"xuất phát {start}" if start else "xuất phát ngẫu nhiên"
     paths = [plot_learning_curves(
         eval_df, "episode", [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"),
                              ("steps_mean", "số bước (chính sách tham lam)")], "algo",
         out_fig / f"tabular_learning_curve_{name}{tag}.png",
         f"{', '.join(args.algos)} trên {args.map} ({start_txt}, reward {args.reward}, state {args.state_mode})", "episode",
-        hlines={"steps_mean": refs})]
+        reference_lines={"steps_mean": refs})]
     if start is not None and args.state_mode == "full":
-        v_star = optimal_value_of_start(grid, start, RewardSettings.from_name(args.reward), args.gamma)
-        if v_star is not None:
+        optimal_start_value = optimal_value_of_start(grid, start, RewardSettings.from_name(args.reward), args.gamma)
+        if optimal_start_value is not None:
             train_df = pd.concat([r["train"].assign(seed=r["seed"], algo=r["algo"]) for r in results],
                                  ignore_index=True)
-            paths.append(plot_q_convergence(train_df, v_star, out_fig / f"q_convergence_{name}{tag}.png",
-                                            smooth=max(1, args.episodes // 400)))
+            paths.append(plot_q_convergence(train_df, optimal_start_value, out_fig / f"q_convergence_{name}{tag}.png",
+                                            smoothing_window=max(1, args.episodes // 400)))
     return paths
 
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
     args = build_parser().parse_args(argv)
-    out = resolve_out(args.out)
-    start = parse_start(args.start)
+    out = resolve_output_directory(args.out)
+    start = parse_start_option(args.start)
     seeds = args.seeds[:2] if args.quick else args.seeds
     episodes = max(20, args.episodes // 10) if args.quick else args.episodes
     evaluate_every_episodes = args.eval_every or max(1, episodes // 200)
     evaluation_episode_count = args.eval_episodes or (1 if start is not None else 10)
-    run_dir = out / args.reward / args.state_mode / map_tag(args.map, start)
+    run_dir = out / args.reward / args.state_mode / build_fixed_room_folder_name(args.map, start)
     tasks = []
     for algo in args.algos:
         for seed in seeds:
@@ -141,7 +136,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                                 checkpoint_episodes=tuple(e for e in args.checkpoints if e <= episodes), seed=seed)
             tasks.append({"algo": algo, "map_name": args.map, "start": start, "reward": args.reward,
                           "cfg": cfg.__dict__.copy(), "log_dir": str(run_dir / algo / f"seed{seed}")})
-    results = run_parallel(train_one, tasks, workers=args.workers)
+    results = run_tasks_in_parallel(train_one, tasks, workers=args.workers)
 
     optimum = optimal_steps_for_each_start(get_room_layout(args.map))
     table = summarize_runs(results, optimum)
@@ -149,7 +144,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     figures = make_figures(results, args, start, out / "figures")
     save_config_with_metadata({"args": vars(args), "episodes": episodes, "seeds": seeds, "eval_every": evaluate_every_episodes,
                       "eval_episodes": evaluation_episode_count, "start": start}, run_dir / "config.json")
-    print(df_to_markdown_table(table))
+    print(dataframe_to_markdown_table(table))
     for path in figures:
         print(f"Hình: {path}")
     return table

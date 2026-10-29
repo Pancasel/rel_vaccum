@@ -12,11 +12,11 @@ import subprocess
 import sys
 import time
 
-from experiments.common import configure_console
+from experiments.shared.console_setup import enable_utf8_console
 
 from project_utils.project_paths import PROJECT_ROOT  # noqa: E402
 
-configure_console()
+enable_utf8_console()
 
 # Tham số tốc độ của v4 (16 môi trường song song, lô 256 mỗi 16 bước) và cấu hình v4 đầy đủ.
 V4_SPEED = ["--n-envs", "16", "--batch-size", "256", "--train-freq", "16"]
@@ -26,48 +26,48 @@ V4 = [*V4_SPEED, "--action-mask", "--egocentric", "--keep-best"]
 STEPS: list[tuple[str, str, list[str], bool]] = [
     ("baselines", "experiments.run_baselines", [], False),
     ("value_iteration", "experiments.run_value_iteration", [], False),
-    ("tabular_3x3", "experiments.run_tabular", ["--map", "empty_3x3", "--start", "0", "0", "--episodes", "5000"], True),
-    ("tabular_4x4", "experiments.run_tabular", ["--map", "obstacle_4x4", "--start", "0", "0", "--episodes", "50000"], True),
-    ("tabular_4x4_random_start", "experiments.run_tabular",
+    ("tabular_3x3", "experiments.run_tabular_q_learning", ["--map", "empty_3x3", "--start", "0", "0", "--episodes", "5000"], True),
+    ("tabular_4x4", "experiments.run_tabular_q_learning", ["--map", "obstacle_4x4", "--start", "0", "0", "--episodes", "50000"], True),
+    ("tabular_4x4_random_start", "experiments.run_tabular_q_learning",
      ["--map", "obstacle_4x4", "--start", "random", "--episodes", "50000"], True),
     ("state_explosion", "experiments.run_state_explosion", [], True),
-    ("e1_markov", "experiments.run_ablation", ["--exp", "markov", "--map", "obstacle_4x4"], True),
-    ("e2_reward", "experiments.run_ablation", ["--exp", "reward", "--map", "obstacle_4x4"], True),
-    ("deep_3x3", "experiments.run_deep", ["--map", "empty_3x3", "--start", "0", "0", "--timesteps", "30000"], True),
-    ("deep_4x4", "experiments.run_deep", ["--map", "obstacle_4x4", "--timesteps", "200000"], True),
-    ("deep_furniture", "experiments.run_deep", ["--map", "furniture_8x8", "--timesteps", "500000"], True),
-    ("deep_random_8x8", "experiments.run_deep", ["--random-maps", "8", "8", "0.15", "--timesteps", "500000"], True),
+    ("e1_markov", "experiments.run_markov_and_reward_ablation", ["--exp", "markov", "--map", "obstacle_4x4"], True),
+    ("e2_reward", "experiments.run_markov_and_reward_ablation", ["--exp", "reward", "--map", "obstacle_4x4"], True),
+    ("deep_3x3", "experiments.run_deep_q_network", ["--map", "empty_3x3", "--start", "0", "0", "--timesteps", "30000"], True),
+    ("deep_4x4", "experiments.run_deep_q_network", ["--map", "obstacle_4x4", "--timesteps", "200000"], True),
+    ("deep_furniture", "experiments.run_deep_q_network", ["--map", "furniture_8x8", "--timesteps", "500000"], True),
+    ("deep_random_8x8", "experiments.run_deep_q_network", ["--random-maps", "8", "8", "0.15", "--timesteps", "500000"], True),
     # Cải tiến v3: action masking. A/B trên phòng ngẫu nhiên 6x6, rồi mô hình 8x8 dùng cho demo phòng lạ.
-    ("mask_ab_nomask", "experiments.run_deep",
+    ("mask_ab_nomask", "experiments.run_deep_q_network",
      ["--random-maps", "6", "6", "0.15", "--timesteps", "150000", "--seeds", "0", "1", "--out", "results/mask_ab"], True),
-    ("mask_ab_mask", "experiments.run_deep",
+    ("mask_ab_mask", "experiments.run_deep_q_network",
      ["--random-maps", "6", "6", "0.15", "--timesteps", "150000", "--seeds", "0", "1", "--action-mask",
       "--out", "results/mask_ab"], True),
-    ("deep_random_8x8_mask", "experiments.run_deep",
+    ("deep_random_8x8_mask", "experiments.run_deep_q_network",
      ["--random-maps", "8", "8", "0.15", "--timesteps", "500000", "--action-mask"], True),
     ("e3_density", "experiments.run_generalization", ["--exp", "density", "--timesteps", "300000"], True),
     ("e4_generalization", "experiments.run_generalization", ["--exp", "generalization", "--timesteps", "200000"], True),
-    ("e6_optimality", "experiments.run_optimality", [], True),
+    ("e6_optimality", "experiments.run_optimality_gap", [], True),
     # Cải tiến v4: A/B bốn cấu hình trên phòng ngẫu nhiên 8x8, rồi bản chính và E3/E4 với cấu hình được chọn.
-    *[(f"v4_ab_{name}", "experiments.run_deep",
+    *[(f"v4_ab_{name}", "experiments.run_deep_q_network",
        ["--random-maps", "8", "8", "0.15", "--timesteps", "600000", "--seeds", "0", "1", *V4_SPEED, "--action-mask",
         *extra, "--out", "results/v4_ab"], True)
       for name, extra in (("mask", []), ("mask_ego", ["--egocentric"]),
                           ("mask_shaped", ["--reward", "shaped", "--shaping-coef", "2"]),
                           ("mask_ego_shaped", ["--egocentric", "--reward", "shaped", "--shaping-coef", "2"]))],
-    ("deep_random_8x8_v4", "experiments.run_deep",
+    ("deep_random_8x8_v4", "experiments.run_deep_q_network",
      ["--random-maps", "8", "8", "0.15", "--timesteps", "2000000", *V4, "--eval-every", "50000",
       "--eval-episodes", "50", "--checkpoints", "0", "100000", "500000", "2000000"], True),
     ("e3_density_v4", "experiments.run_generalization",
      ["--exp", "density", "--size", "8", "8", "--timesteps", "2000000", "--seeds", "0", "1", "2", *V4], True),
     ("e4_generalization_v4", "experiments.run_generalization",
      ["--exp", "generalization", "--timesteps", "2000000", "--seeds", "0", "1", "2", *V4], True),
-    ("demo", "experiments.make_demo", [], False),
+    ("demo", "experiments.make_demo_gifs", [], False),
 ]
 
 
 # Các script có huấn luyện DQN, nhận tham số --device.
-DEVICE_MODULES = {"experiments.run_deep", "experiments.run_generalization", "experiments.run_optimality"}
+DEVICE_MODULES = {"experiments.run_deep_q_network", "experiments.run_generalization", "experiments.run_optimality_gap"}
 
 
 def build_command(name: str, module: str, args: list[str], takes_workers: bool, quick: bool,

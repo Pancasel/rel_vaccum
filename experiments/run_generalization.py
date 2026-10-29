@@ -14,7 +14,8 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from experiments.common import add_common_args, resolve_out, run_parallel
+from experiments.shared.command_line_options import add_shared_options, resolve_output_directory
+from experiments.shared.parallel_execution import run_tasks_in_parallel
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -25,9 +26,13 @@ from agents.deep_q_network.deep_q_network_settings import DeepQNetworkSettings  
 from environment.random_room_generator import generate_distinct_rooms  # noqa: E402
 from evaluation.agent_evaluation import evaluate_agent_on_rooms  # noqa: E402
 from evaluation.metric_summary import summarize_metrics  # noqa: E402
-from experiments.plots import df_to_markdown_table, plot_bar_with_error, plot_lines_with_error, write_text  # noqa: E402
-from experiments.run_deep import (TEST_SET_SEED, TRAIN_POOL_SEED, check_reward_args, reward_config_of,  # noqa: E402
-                                  train_one, train_tag, variant_tag)
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table, write_text_file  # noqa: E402
+from experiments.plotting.comparison_plots import plot_bar_with_error, plot_lines_with_error  # noqa: E402
+from experiments.shared.evaluation_seeds import TEST_ROOMS_SEED, TRAIN_ROOM_POOL_SEED
+from experiments.shared.command_line_options import validate_reward_arguments
+from experiments.shared.environment_factories import reward_settings_from_spec
+from experiments.run_deep_q_network import train_one
+from experiments.shared.result_folder_naming import build_training_options_suffix, build_environment_variant_suffix
 from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 BASELINE_NAMES = ["random_walk", "zigzag", "greedy_bfs"]
@@ -55,7 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-freq", type=int, default=4, help="cập nhật mạng mỗi N bước môi trường")
     parser.add_argument("--tag", default="", help="hậu tố thêm vào tên thư mục/hình (các tùy chọn khác mặc định "
                                                     "như mask/ego/reward/n-envs đã tự được thêm)")
-    add_common_args(parser, "results/generalization")
+    add_shared_options(parser, "results/generalization")
     parser.set_defaults(seeds=[0, 1, 2])
     return parser
 
@@ -116,11 +121,11 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
             tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device, args), "log_dir": str(log_dir),
                           "test_maps": test_maps})
             meta.append((density, seed, log_dir))
-    run_parallel(train_one, tasks, workers=args.workers)
+    run_tasks_in_parallel(train_one, tasks, workers=args.workers)
     per_seed = []
     for density, test_maps in test_sets.items():
         dirs = [(seed, log_dir) for d, seed, log_dir in meta if d == density]
-        per_seed.append(evaluate_agents(test_maps, dirs, seeds, args.device, reward_config_of(vars(args)))
+        per_seed.append(evaluate_agents(test_maps, dirs, seeds, args.device, reward_settings_from_spec(vars(args)))
                         .assign(density=density))
     table = across_seeds(pd.concat(per_seed, ignore_index=True), ["density", "agent"])
     plot_lines_with_error(table, "density",
@@ -139,10 +144,10 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
     density = args.density
     n_test = 3 if args.quick else (args.n_test_maps or 50)
     k_values = ([k for k in args.k_values if k <= 3] or [1]) if args.quick else args.k_values
-    test_maps = generate_distinct_rooms(h, w, density, n_test, seed=TEST_SET_SEED)
+    test_maps = generate_distinct_rooms(h, w, density, n_test, seed=TEST_ROOMS_SEED)
     tasks, meta = [], []
     for k in k_values:
-        pool = generate_distinct_rooms(h, w, density, k, seed=TRAIN_POOL_SEED, excluded_rooms=test_maps) if k > 0 else None
+        pool = generate_distinct_rooms(h, w, density, k, seed=TRAIN_ROOM_POOL_SEED, excluded_rooms=test_maps) if k > 0 else None
         spec = {"map": None, "random": (h, w, density), "pool": pool, "exclude": test_maps, "reward": args.reward,
                 "shaping_coef": args.shaping_coef, "start": None}
         for seed in seeds:
@@ -150,7 +155,7 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
             tasks.append({"spec": spec, "cfg": dqn_cfg(timesteps, seed, args.quick, args.device, args), "log_dir": str(log_dir),
                           "test_maps": test_maps})
             meta.append((k, seed, log_dir, pool))
-    run_parallel(train_one, tasks, workers=args.workers)
+    run_tasks_in_parallel(train_one, tasks, workers=args.workers)
     rows = []
     for k, seed, log_dir, pool in meta:
         agent = DeepQNetworkAgent.load(log_dir / "model.pt", device=args.device)
@@ -159,12 +164,12 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
             splits["train (đã gặp)"] = pool[:n_test]
         for split, maps in splits.items():
             df = evaluate_agent_on_rooms(agent, maps, EPISODES_PER_TEST_MAP, seed=seed,
-                                  reward_settings=reward_config_of(vars(args)))
+                                  reward_settings=reward_settings_from_spec(vars(args)))
             rows.append({"K": "∞" if k == 0 else str(k), "split": split, "seed": seed, **summarize_metrics(df).iloc[0].to_dict()})
     table = across_seeds(pd.DataFrame(rows), ["K", "split"])
     plot_bar_with_error(table, "K", "coverage_mean", "coverage_mean_sd", out / "figures" / f"e4_generalization_{h}x{w}{args.tag}.png",
                         f"E4: DQN huấn luyện trên K phòng, đo trên phòng đã gặp và chưa gặp ({h}x{w}, mật độ {density:g})",
-                        "tỷ lệ đã dọn", hue="split")
+                        "tỷ lệ đã dọn", group_column="split")
     save_dataframe_csv(table, out / "generalization" / f"e4_generalization_{h}x{w}{args.tag}.csv")
     return table
 
@@ -172,17 +177,17 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
 def main(argv: list[str] | None = None) -> pd.DataFrame:
     parser = build_parser()
     args = parser.parse_args(argv)
-    check_reward_args(parser, args)
+    validate_reward_arguments(parser, args)
     # Tên thư mục/hình tự gồm mọi tùy chọn khác mặc định, để các cấu hình không ghi đè kết quả của nhau.
-    args.tag = variant_tag(vars(args)) + train_tag(args) + args.tag
-    out = resolve_out(args.out)
+    args.tag = build_environment_variant_suffix(vars(args)) + build_training_options_suffix(args) + args.tag
+    out = resolve_output_directory(args.out)
     seeds = args.seeds[:1] if args.quick else args.seeds
     timesteps = min(args.timesteps, 1_200) if args.quick else args.timesteps
     if args.quick and args.exp == "density":
         args.densities = args.densities[:2]
     table = (run_density if args.exp == "density" else run_generalization)(args, out, seeds, timesteps)
-    text = df_to_markdown_table(table)
-    write_text(text, out / args.exp / f"summary{args.tag}.md")
+    text = dataframe_to_markdown_table(table)
+    write_text_file(text, out / args.exp / f"summary{args.tag}.md")
     save_config_with_metadata({"args": vars(args), "seeds": seeds, "timesteps": timesteps}, out / args.exp / f"config{args.tag}.json")
     print(text)
     return table

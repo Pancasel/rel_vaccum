@@ -5,8 +5,8 @@
                + kiểm chứng lý thuyết shaping thế năng bằng Value Iteration.
 
 Ví dụ:
-    python -m experiments.run_ablation --exp markov --map obstacle_4x4 --workers 5
-    python -m experiments.run_ablation --exp reward --map obstacle_4x4 --workers 5
+    python -m experiments.run_markov_and_reward_ablation --exp markov --map obstacle_4x4 --workers 5
+    python -m experiments.run_markov_and_reward_ablation --exp reward --map obstacle_4x4 --workers 5
 """
 
 from __future__ import annotations
@@ -15,7 +15,9 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from experiments.common import add_common_args, make_env_factory, resolve_out, run_parallel
+from experiments.shared.command_line_options import add_shared_options, resolve_output_directory
+from experiments.shared.environment_factories import make_environment_factory
+from experiments.shared.parallel_execution import run_tasks_in_parallel
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -24,8 +26,9 @@ from environment.room_layouts import FIXED_ROOM_LAYOUTS, get_room_layout  # noqa
 from environment.rendering.gif_recording import record_episode_as_gif  # noqa: E402
 from environment.reward_settings import RewardSettings  # noqa: E402
 from evaluation.metric_summary import summarize_metrics  # noqa: E402
-from experiments.plots import df_to_markdown_table, plot_learning_curves, write_text  # noqa: E402
-from experiments.run_tabular import train_one  # noqa: E402
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table, write_text_file  # noqa: E402
+from experiments.plotting.learning_curve_plots import plot_learning_curves  # noqa: E402
+from experiments.run_tabular_q_learning import train_one  # noqa: E402
 from agents.tabular.tabular_agent_base import TabularAgentBase  # noqa: E402
 from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
 from agents.tabular.state_transition_graph import build_state_transition_graph  # noqa: E402
@@ -42,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exp", required=True, choices=["markov", "reward"])
     parser.add_argument("--map", default="obstacle_4x4", choices=sorted(FIXED_ROOM_LAYOUTS))
     parser.add_argument("--episodes", type=int, default=20_000)
-    add_common_args(parser, "results/ablation")
+    add_shared_options(parser, "results/ablation")
     return parser
 
 
@@ -59,7 +62,7 @@ def run_variants(variants: dict[str, dict[str, Any]], map_name: str, episodes: i
                           "reward": variant.get("reward", "dense"), "cfg": cfg.__dict__.copy(),
                           "log_dir": str(run_dir / name / f"seed{seed}")})
             names.append(name)
-    results = run_parallel(train_one, tasks, workers=workers)
+    results = run_tasks_in_parallel(train_one, tasks, workers=workers)
     for name, res in zip(names, results):
         res["variant"] = name
     return results
@@ -79,13 +82,13 @@ def curves_and_summary(results: list[dict[str, Any]], out_fig: Path, title: str)
 def record_greedy_gif(log_dir: Path, map_name: str, reward: str, path: Path) -> dict[str, Any]:
     """GIF chính sách tham lam của agent đã học (seed 0) — để thấy tận mắt hành vi."""
     agent = TabularAgentBase.load(log_dir / "checkpoints" / "final.pkl")
-    env = make_env_factory(map_name, start=START, reward=reward, render_mode="rgb_array")()
+    env = make_environment_factory(map_name, start=START, reward=reward, render_mode="rgb_array")()
     return record_episode_as_gif(agent, env, path, seed=0)
 
 
 def count_back_and_forth(agent: TabularAgentBase, map_name: str, reward: str) -> int:
     """Số lần robot quay lại đúng ô của 2 bước trước (dấu hiệu vòng lặp "ra-vào")."""
-    env = make_env_factory(map_name, start=START, reward=reward)()
+    env = make_environment_factory(map_name, start=START, reward=reward)()
     obs, info = env.reset(seed=0)
     positions = [info["position"]]
     done = False
@@ -114,7 +117,7 @@ def shaping_policy_check(map_name: str, gamma: float = 0.99) -> dict[str, int]:
 
 def main(argv: list[str] | None = None) -> pd.DataFrame:
     args = build_parser().parse_args(argv)
-    out = resolve_out(args.out)
+    out = resolve_output_directory(args.out)
     seeds = args.seeds[:2] if args.quick else args.seeds
     episodes = max(50, args.episodes // 20) if args.quick else args.episodes
     run_dir = out / args.exp / args.map
@@ -140,8 +143,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                  "hackable_back_and_forth_moves": count_back_and_forth(hack_agent, args.map, "hackable"),
                  "shaping_theory_check": shaping_policy_check(args.map)}
     save_dataframe_csv(table, run_dir / "summary.csv")
-    report = df_to_markdown_table(table) + "\n\n" + "\n".join(f"- {k}: {v}" for k, v in extra.items())
-    write_text(report, run_dir / "summary.md")
+    report = dataframe_to_markdown_table(table) + "\n\n" + "\n".join(f"- {k}: {v}" for k, v in extra.items())
+    write_text_file(report, run_dir / "summary.md")
     save_config_with_metadata({"args": vars(args), "episodes": episodes, "seeds": seeds, "start": START, **extra},
                      run_dir / "config.json")
     print(report)

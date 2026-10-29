@@ -2,7 +2,7 @@
 
 Dùng khi sửa cách vẽ (ví dụ định dạng trục) mà muốn cập nhật hình của các lần chạy cũ.
 
-    python -m experiments.replot
+    python -m experiments.replot_saved_results
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from evaluation.optimal_reference import optimal_value_of_start, reference_step_counts
-from experiments.common import resolve_out
+from experiments.shared.command_line_options import resolve_output_directory
 
 import pandas as pd  # noqa: E402
 
@@ -20,8 +20,8 @@ from environment.random_room_generator import generate_distinct_rooms  # noqa: E
 from environment.room_layouts import get_room_layout  # noqa: E402
 from environment.reward_settings import RewardSettings  # noqa: E402
 from evaluation.agent_evaluation import evaluate_agent_on_rooms  # noqa: E402
-from experiments.plots import plot_learning_curves, plot_q_convergence  # noqa: E402
-from experiments.run_deep import TEST_SET_SEED  # noqa: E402
+from experiments.plotting.learning_curve_plots import plot_learning_curves, plot_q_convergence  # noqa: E402
+from experiments.shared.evaluation_seeds import TEST_ROOMS_SEED  # noqa: E402
 
 EVAL_PANELS = [("coverage_mean", "tỷ lệ đã dọn (chính sách tham lam)"), ("steps_mean", "số bước (chính sách tham lam)")]
 
@@ -49,14 +49,14 @@ def replot_tabular(results: Path) -> list[Path]:
         out.append(plot_learning_curves(
             evals, "episode", EVAL_PANELS, "algo", results / "tabular" / "figures" / f"tabular_learning_curve_{run_dir.name}.png",
             f"q_learning trên {map_name} ({start_txt}, reward dense, state full)", "episode",
-            hlines={"steps_mean": reference_step_counts(grid, start)}))
+            reference_lines={"steps_mean": reference_step_counts(grid, start)}))
         if start is not None:
             train = _read_seeds(sorted(run_dir.glob("q_learning/seed*/seed*_train.csv")), algo="q_learning")
-            v_star = optimal_value_of_start(grid, start, RewardSettings.dense(), 0.99)
-            if v_star is not None:
+            optimal_start_value = optimal_value_of_start(grid, start, RewardSettings.dense(), 0.99)
+            if optimal_start_value is not None:
                 episodes = int(train["episode"].max())
-                out.append(plot_q_convergence(train, v_star, results / "tabular" / "figures" /
-                                              f"q_convergence_{run_dir.name}.png", smooth=max(1, episodes // 400)))
+                out.append(plot_q_convergence(train, optimal_start_value, results / "tabular" / "figures" /
+                                              f"q_convergence_{run_dir.name}.png", smoothing_window=max(1, episodes // 400)))
     return out
 
 
@@ -86,7 +86,7 @@ def _deep_references(tag: str) -> dict[str, float]:
     random_match = re.match(r"rand(\d+)x(\d+)_d([\d.]+)_K0", tag)
     if random_match:
         h, w, density = int(random_match.group(1)), int(random_match.group(2)), float(random_match.group(3))
-        test_maps = generate_distinct_rooms(h, w, density, 50, seed=TEST_SET_SEED)
+        test_maps = generate_distinct_rooms(h, w, density, 50, seed=TEST_ROOMS_SEED)
         return {name: float(evaluate_agent_on_rooms(agent, test_maps, 1, seed=0)["steps"].mean())
                 for name, agent in (("greedy_bfs", GreedyNearestDirtyCellAgent()), ("zigzag", ZigzagSweepAgent()))}
     fixed = re.fullmatch(r"(.+?)(?:_s(\d)(\d))?", tag)
@@ -104,12 +104,12 @@ def replot_deep(results: Path) -> list[Path]:
         df = _read_seeds(paths, algo="dqn")
         out.append(plot_learning_curves(
             df, "global_step", EVAL_PANELS, "algo", results / "deep" / "figures" / f"deep_learning_curve_{run_dir.name}.png",
-            f"DQN trên {run_dir.name}", "bước huấn luyện", hlines={"steps_mean": _deep_references(run_dir.name)}))
+            f"DQN trên {run_dir.name}", "bước huấn luyện", reference_lines={"steps_mean": _deep_references(run_dir.name)}))
     return out
 
 
 def main(argv: list[str] | None = None) -> list[Path]:
-    results = resolve_out("results")
+    results = resolve_output_directory("results")
     paths = replot_tabular(results) + replot_ablation(results) + replot_deep(results)
     for path in paths:
         print(f"Hình: {path}")

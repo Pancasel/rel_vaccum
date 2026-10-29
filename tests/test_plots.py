@@ -9,9 +9,12 @@ import pandas as pd
 import pytest
 
 from environment.room_layouts import get_room_layout
-from experiments.plots import (color_for, df_to_markdown_table, load_runs, plot_bar_with_error, plot_learning_curve,
-                               plot_learning_curves, plot_lines_with_error, plot_q_convergence, plot_state_explosion,
-                               plot_tabular_scaling, plot_visit_heatmaps, write_text)
+from experiments.plotting.plot_style import color_for_agent
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table, write_text_file
+from experiments.plotting.learning_curve_plots import load_seed_csv_files, plot_learning_curve, plot_learning_curves, plot_q_convergence
+from experiments.plotting.comparison_plots import plot_bar_with_error, plot_lines_with_error
+from experiments.plotting.tabular_scaling_plots import plot_state_explosion, plot_tabular_scaling
+from experiments.plotting.visit_heatmap_plots import plot_visit_heatmaps
 
 
 def _curve_df() -> pd.DataFrame:
@@ -23,18 +26,18 @@ def _curve_df() -> pd.DataFrame:
 def test_load_runs(tmp_path: Path) -> None:
     for seed in (0, 1):
         pd.DataFrame({"x": [1, 2]}).to_csv(tmp_path / f"seed{seed}_eval.csv", index=False)
-    df = load_runs("seed*_eval.csv", root=tmp_path)
+    df = load_seed_csv_files("seed*_eval.csv", search_root=tmp_path)
     assert sorted(df["seed"].unique()) == [0, 1] and len(df) == 4
     with pytest.raises(FileNotFoundError):
-        load_runs("nothing*.csv", root=tmp_path)
+        load_seed_csv_files("nothing*.csv", search_root=tmp_path)
 
 
 def test_learning_curves_and_convergence(tmp_path: Path) -> None:
     df = _curve_df()
     p1 = plot_learning_curves(df, "episode", [("coverage_mean", "cov"), ("steps_mean", "steps")], "algo",
-                              tmp_path / "a.png", "tiêu đề", "episode", hlines={"steps_mean": {"tối ưu": 13}})
-    p2 = plot_learning_curve(df, "episode", "steps_mean", "algo", tmp_path / "b.png", hline=13.0, smooth=3)
-    p3 = plot_q_convergence(df, v_star=5.0, out_path=tmp_path / "c.png", smooth=2)
+                              tmp_path / "a.png", "tiêu đề", "episode", reference_lines={"steps_mean": {"tối ưu": 13}})
+    p2 = plot_learning_curve(df, "episode", "steps_mean", "algo", tmp_path / "b.png", reference_line_value=13.0, smoothing_window=3)
+    p3 = plot_q_convergence(df, optimal_start_value=5.0, output_path=tmp_path / "c.png", smoothing_window=2)
     assert all(p.exists() and p.stat().st_size > 0 for p in (p1, p2, p3))
 
 
@@ -43,7 +46,7 @@ def test_bar_and_lines(tmp_path: Path) -> None:
                             "coverage_mean": [0.9, 0.5, 0.8, 0.8], "coverage_mean_sd": [0.05] * 4,
                             "density": [0.0, 0.0, 0.1, 0.1], "agent": ["dqn", "zigzag"] * 2})
     assert plot_bar_with_error(summary, "K", "coverage_mean", "coverage_mean_sd", tmp_path / "bar.png", "t", "y",
-                               hue="split").exists()
+                               group_column="split").exists()
     assert plot_lines_with_error(summary, "density", [("coverage_mean", "coverage_mean_sd", "y")], "agent",
                                  tmp_path / "lines.png", "t", "x").exists()
 
@@ -65,17 +68,17 @@ def test_visit_heatmaps(tmp_path: Path) -> None:
 
 
 def test_markdown_and_colors(tmp_path: Path) -> None:
-    table = df_to_markdown_table(pd.DataFrame({"a": [1, 2], "b": [0.123, np.nan]}))
+    table = dataframe_to_markdown_table(pd.DataFrame({"a": [1, 2], "b": [0.123, np.nan]}))
     assert table.splitlines() == ["| a | b |", "|---|---|", "| 1 | 0.12 |", "| 2 | nan |"]
-    assert color_for("dqn") == "#d62728"
-    assert color_for("something_new", 2).startswith("#")
-    assert write_text("xin chào", tmp_path / "t.md").read_text(encoding="utf-8") == "xin chào"
+    assert color_for_agent("dqn") == "#d62728"
+    assert color_for_agent("something_new", 2).startswith("#")
+    assert write_text_file("xin chào", tmp_path / "t.md").read_text(encoding="utf-8") == "xin chào"
 
 
 def test_compact_axis_numbers() -> None:
-    from experiments.plots import _compact_number
+    from experiments.plotting.plot_style import format_compact_number
 
-    assert [_compact_number(v) for v in (0, 500, 2500, 20000, 1_500_000)] == ["0", "500", "2.5k", "20k", "1.5M"]
+    assert [format_compact_number(v) for v in (0, 500, 2500, 20000, 1_500_000)] == ["0", "500", "2.5k", "20k", "1.5M"]
 
 
 def test_state_explosion_without_title(tmp_path: Path) -> None:

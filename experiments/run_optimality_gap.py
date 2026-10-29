@@ -6,7 +6,7 @@ Mỗi ô của bảng: số bước (trung bình ± std qua seed) và gap% = (s�
 - VI, greedy_bfs, zigzag: tất định.
 
 Ví dụ:
-    python -m experiments.run_optimality --workers 12
+    python -m experiments.run_optimality_gap --workers 12
 """
 
 from __future__ import annotations
@@ -15,7 +15,9 @@ import argparse
 import functools
 from typing import Any
 
-from experiments.common import add_common_args, make_env_factory, resolve_out, run_parallel
+from experiments.shared.command_line_options import add_shared_options, resolve_output_directory
+from experiments.shared.environment_factories import make_environment_factory
+from experiments.shared.parallel_execution import run_tasks_in_parallel
 
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
@@ -26,7 +28,7 @@ from agents.deep_q_network.deep_q_network_settings import DeepQNetworkSettings  
 from environment.room_layouts import get_room_layout  # noqa: E402
 from environment.vacuum_cleaning_env import VacuumCleaningEnv  # noqa: E402
 from evaluation.episode_runner import run_single_episode  # noqa: E402
-from experiments.plots import df_to_markdown_table, write_text  # noqa: E402
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table, write_text_file  # noqa: E402
 from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
 from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
 from agents.tabular.state_transition_graph import build_state_transition_graph, minimum_steps_to_clean_all  # noqa: E402
@@ -43,7 +45,7 @@ DQN_TIMESTEPS = {"empty_3x3": 60_000, "obstacle_4x4": 200_000}
 
 def train_q(map_name: str, start: tuple[int, int], episodes: int, seed: int) -> dict[str, Any]:
     """Q-learning cho một (bản đồ, ô xuất phát, seed); trả số bước của chính sách tham lam."""
-    factory = make_env_factory(map_name, start=start)
+    factory = make_environment_factory(map_name, start=start)
     agent = QLearningAgent(get_room_layout(map_name), TabularSettings(episode_count=episodes, evaluate_every_episodes=episodes, evaluation_episode_count=1,
                                                             seed=seed))
     agent.train(factory)
@@ -78,9 +80,9 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     parser = argparse.ArgumentParser(description="E6: khoảng cách tới tối ưu trên lưới nhỏ.")
     parser.add_argument("--maps", nargs="+", default=list(STARTS), choices=list(STARTS))
     parser.add_argument("--device", default="auto", help="auto (GPU nếu có) | cpu | cuda")
-    add_common_args(parser, "results/optimality")
+    add_shared_options(parser, "results/optimality")
     args = parser.parse_args(argv)
-    out = resolve_out(args.out)
+    out = resolve_output_directory(args.out)
     seeds = args.seeds[:1] if args.quick else args.seeds
     q_eps = {m: (200 if args.quick else Q_EPISODES[m]) for m in args.maps}
     dqn_steps = {m: (800 if args.quick else DQN_TIMESTEPS[m]) for m in args.maps}
@@ -89,7 +91,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                for m in args.maps for s in STARTS[m] for seed in seeds]
     d_tasks = [{"map_name": m, "timesteps": dqn_steps[m], "seed": seed, "log_dir": str(out / "dqn" / m / f"seed{seed}"), "device": args.device}
                for m in args.maps for seed in seeds]
-    results = run_parallel(dispatch_task, [{"kind": "q", "kwargs": t} for t in q_tasks] +
+    results = run_tasks_in_parallel(dispatch_task, [{"kind": "q", "kwargs": t} for t in q_tasks] +
                            [{"kind": "dqn", "kwargs": t} for t in d_tasks], workers=args.workers)
     q_res = [r for r in results if "start" in r]
     d_res = [r for r in results if "start" not in r]
@@ -116,8 +118,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     table = pd.DataFrame(rows)
     save_dataframe_csv(pd.DataFrame(raw), out / "e6_optimality_gap.csv")
     text = (f"# E6: khoảng cách tới tối ưu (số bước, trung bình ± std qua {len(seeds)} seed, gap so với tối thiểu)\n\n"
-            + df_to_markdown_table(table))
-    write_text(text, out / "e6_optimality_gap.md")
+            + dataframe_to_markdown_table(table))
+    write_text_file(text, out / "e6_optimality_gap.md")
     save_config_with_metadata({"args": vars(args), "seeds": seeds, "q_episodes": q_eps, "dqn_timesteps": dqn_steps,
                       "starts": {k: [list(s) for s in v] for k, v in STARTS.items()}}, out / "config.json")
     print(text)

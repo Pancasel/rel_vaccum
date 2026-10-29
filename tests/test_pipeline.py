@@ -28,9 +28,9 @@ def test_run_value_iteration(tmp_path: Path) -> None:
 
 
 def test_run_tabular(tmp_path: Path) -> None:
-    from experiments import run_tabular
+    from experiments import run_tabular_q_learning
 
-    run_tabular.main(["--quick", "--map", "empty_3x3", "--episodes", "300", "--out", str(tmp_path)])
+    run_tabular_q_learning.main(["--quick", "--map", "empty_3x3", "--episodes", "300", "--out", str(tmp_path)])
     run_dir = tmp_path / "dense" / "full" / "empty_3x3_s00"
     assert (run_dir / "summary.csv").exists()
     assert (run_dir / "q_learning" / "seed0" / "checkpoints" / "final.pkl").exists()
@@ -49,17 +49,17 @@ def test_run_state_explosion(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("exp", ["markov", "reward"])
 def test_run_ablation(tmp_path: Path, exp: str) -> None:
-    from experiments import run_ablation
+    from experiments import run_markov_and_reward_ablation
 
-    run_ablation.main(["--exp", exp, "--map", "empty_3x3", "--quick", "--out", str(tmp_path)])
+    run_markov_and_reward_ablation.main(["--exp", exp, "--map", "empty_3x3", "--quick", "--out", str(tmp_path)])
     assert (tmp_path / exp / "empty_3x3" / "summary.md").exists()
     assert list((tmp_path / "gifs").glob("*.gif"))
 
 
 def test_run_deep(tmp_path: Path) -> None:
-    from experiments import run_deep
+    from experiments import run_deep_q_network
 
-    run_deep.main(["--quick", "--map", "empty_3x3", "--out", str(tmp_path)])
+    run_deep_q_network.main(["--quick", "--map", "empty_3x3", "--out", str(tmp_path)])
     assert (tmp_path / "dqn" / "empty_3x3" / "seed0" / "model.pt").exists()
     assert (tmp_path / "figures" / "deep_learning_curve_empty_3x3.png").exists()
 
@@ -74,16 +74,16 @@ def test_run_generalization(tmp_path: Path, exp: str) -> None:
 
 
 def test_run_optimality(tmp_path: Path) -> None:
-    from experiments import run_optimality
+    from experiments import run_optimality_gap
 
-    run_optimality.main(["--quick", "--maps", "empty_3x3", "--out", str(tmp_path)])
+    run_optimality_gap.main(["--quick", "--maps", "empty_3x3", "--out", str(tmp_path)])
     assert (tmp_path / "e6_optimality_gap.md").exists()
 
 
 def test_make_demo(tmp_path: Path) -> None:
-    from experiments import make_demo
+    from experiments import make_demo_gifs
 
-    make_demo.main(["--quick", "--map", "obstacle_4x4", "--out", str(tmp_path)])
+    make_demo_gifs.main(["--quick", "--map", "obstacle_4x4", "--out", str(tmp_path)])
     for name in ("compare_obstacle_4x4.gif", "progress_qlearning.gif", "progress_dqn.gif",
                  "heatmap_obstacle_4x4.png", "unseen_rooms.gif", "demo_summary.md"):
         assert (tmp_path / name).exists(), name
@@ -92,9 +92,9 @@ def test_make_demo(tmp_path: Path) -> None:
 def test_reproduce_all_commands() -> None:
     from experiments import reproduce_all
 
-    cmd = reproduce_all.build_command("x", "experiments.run_deep", ["--map", "empty_3x3"], True, quick=True, workers=4)
-    assert cmd[1:] == ["-m", "experiments.run_deep", "--map", "empty_3x3", "--quick", "--out", "results/_quick/x",
+    cmd = reproduce_all.build_command("x", "experiments.run_deep_q_network", ["--map", "empty_3x3"], True, quick=True, workers=4)
+    assert cmd[1:] == ["-m", "experiments.run_deep_q_network", "--map", "empty_3x3", "--quick", "--out", "results/_quick/x",
                        "--workers", "4"]
-    cmd = reproduce_all.build_command("y", "experiments.run_deep", [], False, quick=False, workers=1, device="cpu")
+    cmd = reproduce_all.build_command("y", "experiments.run_deep_q_network", [], False, quick=False, workers=1, device="cpu")
     assert cmd[-2:] == ["--device", "cpu"]
     assert "--device" not in reproduce_all.build_command("z", "experiments.run_baselines", [], False, False, 1, "cpu")

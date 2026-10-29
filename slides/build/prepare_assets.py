@@ -78,12 +78,13 @@ def replot_untitled() -> None:
     import pandas as pd
 
     sys.path.insert(0, str(PROJECT_ROOT))
-    from experiments.plots import plot_bar_with_error, plot_state_explosion
+    from experiments.plotting.comparison_plots import plot_bar_with_error
+    from experiments.plotting.tabular_scaling_plots import plot_state_explosion
 
     plot_state_explosion(pd.read_csv(RESULTS / "state_explosion.csv"), OUT / "state_explosion.png", title="")
     e4 = pd.read_csv(RESULTS / "generalization/generalization/e4_generalization_6x6_mask_ego_ne16_bs256_tf16.csv")
     plot_bar_with_error(e4, "K", "coverage_mean", "coverage_mean_sd", OUT / "e4_generalization.png", title="",
-                        ylabel="tỷ lệ đã dọn", hue="split")
+                        y_label="tỷ lệ đã dọn", group_column="split")
 
 
 def main() -> None:

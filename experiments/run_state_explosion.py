@@ -16,7 +16,9 @@ import sys
 import time
 from typing import Any
 
-from experiments.common import make_env_factory, resolve_out, run_parallel
+from experiments.shared.environment_factories import make_environment_factory
+from experiments.shared.command_line_options import resolve_output_directory
+from experiments.shared.parallel_execution import run_tasks_in_parallel
 from evaluation.optimal_reference import optimal_steps_for_each_start
 
 import numpy as np  # noqa: E402
@@ -24,7 +26,8 @@ import pandas as pd  # noqa: E402
 
 from environment.room_layouts import get_room_layout, parse_room_layout  # noqa: E402
 from evaluation.agent_evaluation import evaluate_agent  # noqa: E402
-from experiments.plots import df_to_markdown_table, plot_state_explosion, plot_tabular_scaling  # noqa: E402
+from experiments.plotting.markdown_tables import dataframe_to_markdown_table  # noqa: E402
+from experiments.plotting.tabular_scaling_plots import plot_state_explosion, plot_tabular_scaling  # noqa: E402
 from agents.tabular.tabular_settings import TabularSettings  # noqa: E402
 from agents.tabular.q_learning_agent import QLearningAgent  # noqa: E402
 from agents.tabular.reachable_state_counter import count_reachable_states  # noqa: E402
@@ -77,7 +80,7 @@ def _q_table_bytes(agent: QLearningAgent) -> int:
 
 def train_with_budget(map_name: str, budget_min: float, seed: int) -> dict[str, Any]:
     """Huấn luyện Q-learning (xuất phát (0,0)) trong một khoảng thời gian cố định."""
-    factory = make_env_factory(map_name, start=(0, 0))
+    factory = make_environment_factory(map_name, start=(0, 0))
     cfg = TabularSettings(episode_count=10_000_000, time_budget_minutes=budget_min, evaluate_every_episodes=200, evaluation_episode_count=1,
                         epsilon_decay_fraction=0.01, seed=seed)
     # Không biết trước số episode chạy được trong ngân sách: ε giảm trong 100.000 episode đầu
@@ -106,24 +109,24 @@ def scaling_table(results: list[dict[str, Any]]) -> pd.DataFrame:
 
 def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
     args = build_parser().parse_args(argv)
-    out = resolve_out(args.out)
+    out = resolve_output_directory(args.out)
     sizes = COUNT_SIZES[:3] if args.quick else COUNT_SIZES
     counts = count_states(sizes, BOUND_ONLY_SIZES, args.count_time_limit_s)
     save_dataframe_csv(counts, out / "state_explosion.csv")
     plot_state_explosion(counts, out / "figures" / "state_explosion.png")
-    print(df_to_markdown_table(counts, float_fmt=".3g"))
+    print(dataframe_to_markdown_table(counts, float_format=".3g"))
     tables = {"counts": counts}
     if not args.skip_scaling:
         budget = 0.1 if args.quick else args.time_budget_min
         maps = SCALING_MAPS[:2] if args.quick else SCALING_MAPS
-        results = run_parallel(train_with_budget, [{"map_name": m, "budget_min": budget, "seed": args.seed}
+        results = run_tasks_in_parallel(train_with_budget, [{"map_name": m, "budget_min": budget, "seed": args.seed}
                                                    for m in maps], workers=args.workers)
         scaling = scaling_table(results)
         save_dataframe_csv(scaling, out / "tabular" / "scaling.csv")
         train_df = pd.concat([r["train"].assign(map=r["map"]) for r in results], ignore_index=True)
         eval_df = pd.concat([r["eval"].assign(map=r["map"]) for r in results], ignore_index=True)
         plot_tabular_scaling(train_df, eval_df, out / "figures" / "tabular_scaling.png")
-        print(df_to_markdown_table(scaling, float_fmt=".3g"))
+        print(dataframe_to_markdown_table(scaling, float_format=".3g"))
         tables["scaling"] = scaling
     save_config_with_metadata({"args": vars(args), "count_sizes": sizes}, out / "state_explosion_config.json")
     return tables
