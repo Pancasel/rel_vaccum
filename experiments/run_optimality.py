@@ -30,7 +30,7 @@ from tabular.common import TabularConfig  # noqa: E402
 from tabular.q_learning import QLearningAgent  # noqa: E402
 from tabular.state_space import build_state_graph, min_steps_to_cover  # noqa: E402
 from tabular.value_iteration import VIAgent, value_iteration  # noqa: E402
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 STARTS: dict[str, list[tuple[int, int]]] = {
     "empty_3x3": [(0, 0), (0, 1), (1, 1)],  # góc, giữa cạnh, tâm
@@ -113,11 +113,11 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                      "gap_pct": (float(np.mean(v)) - optimum) / optimum * 100, "n": len(v)}
                     for name, v in values.items()]
     table = pd.DataFrame(rows)
-    save_csv(pd.DataFrame(raw), out / "e6_optimality_gap.csv")
+    save_dataframe_csv(pd.DataFrame(raw), out / "e6_optimality_gap.csv")
     text = (f"# E6: khoảng cách tới tối ưu (số bước, trung bình ± std qua {len(seeds)} seed, gap so với tối thiểu)\n\n"
             + df_to_markdown_table(table))
     write_text(text, out / "e6_optimality_gap.md")
-    save_config_json({"args": vars(args), "seeds": seeds, "q_episodes": q_eps, "dqn_timesteps": dqn_steps,
+    save_config_with_metadata({"args": vars(args), "seeds": seeds, "q_episodes": q_eps, "dqn_timesteps": dqn_steps,
                       "starts": {k: [list(s) for s in v] for k, v in STARTS.items()}}, out / "config.json")
     print(text)
     return table

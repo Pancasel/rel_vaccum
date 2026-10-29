@@ -13,8 +13,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parents[2]
-RESULTS = ROOT / "results"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RESULTS = PROJECT_ROOT / "results"
 OUT = Path(__file__).resolve().parent / "assets"
 
 # Hình matplotlib: bỏ tiêu đề (đã có tiêu đề slide), giữ từ đường viền trên của trục trở xuống.
@@ -77,7 +77,7 @@ def replot_untitled() -> None:
 
     import pandas as pd
 
-    sys.path.insert(0, str(ROOT))
+    sys.path.insert(0, str(PROJECT_ROOT))
     from experiments.plots import plot_bar_with_error, plot_state_explosion
 
     plot_state_explosion(pd.read_csv(RESULTS / "state_explosion.csv"), OUT / "state_explosion.png", title="")

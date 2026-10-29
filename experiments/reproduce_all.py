@@ -14,7 +14,7 @@ import time
 
 from experiments.common import configure_console
 
-from utils.paths import ROOT  # noqa: E402
+from project_utils.project_paths import PROJECT_ROOT  # noqa: E402
 
 configure_console()
 
@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
         cmd = build_command(name, module, step_args, takes_workers, args.quick, args.workers, args.device)
         print(f"\n[{i}/{len(selected)}] {name}: {' '.join(cmd[1:])}", flush=True)
         t0 = time.monotonic()
-        code = subprocess.run(cmd, cwd=ROOT).returncode
+        code = subprocess.run(cmd, cwd=PROJECT_ROOT).returncode
         if code != 0:
             print(f"Bước '{name}' lỗi (mã {code}). Dừng lại.", flush=True)
             return code

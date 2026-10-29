@@ -1,4 +1,4 @@
-"""Kiểm tra môi trường cài đặt: các thư viện import được và ROOT đúng."""
+"""Kiểm tra môi trường cài đặt: các thư viện import được và PROJECT_ROOT đúng."""
 
 from __future__ import annotations
 
@@ -15,17 +15,17 @@ def test_imports() -> None:
 
 
 def test_root_is_repo_root() -> None:
-    from utils.paths import ROOT
+    from project_utils.project_paths import PROJECT_ROOT
 
-    assert (ROOT / "IMPLEMENTATION_PLAN.md").exists()
-    assert ROOT == Path(__file__).resolve().parents[1]
+    assert (PROJECT_ROOT / "docs/IMPLEMENTATION_PLAN.md").exists()
+    assert PROJECT_ROOT == Path(__file__).resolve().parents[1]
 
 
-def test_assert_inside_root_rejects_outside(tmp_path: Path) -> None:
+def test_require_path_inside_project_rejects_outside(tmp_path: Path) -> None:
     import pytest
 
-    from utils.paths import ROOT, assert_inside_root
+    from project_utils.project_paths import PROJECT_ROOT, require_path_inside_project
 
-    assert assert_inside_root(ROOT / "results") == (ROOT / "results").resolve()
+    assert require_path_inside_project(PROJECT_ROOT / "results") == (PROJECT_ROOT / "results").resolve()
     with pytest.raises(ValueError):
-        assert_inside_root(ROOT.parent / "somewhere_else.txt")
+        require_path_inside_project(PROJECT_ROOT.parent / "somewhere_else.txt")

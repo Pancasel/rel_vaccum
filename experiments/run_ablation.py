@@ -29,7 +29,7 @@ from experiments.run_tabular import train_one  # noqa: E402
 from tabular.common import TabularAgent, TabularConfig  # noqa: E402
 from tabular.state_space import build_state_graph  # noqa: E402
 from tabular.value_iteration import value_iteration  # noqa: E402
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 START = (0, 0)
 REWARD_CONFIGS = ["sparse", "dense", "shaped", "hackable"]
@@ -138,10 +138,10 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
         extra = {"hackable_gif": gif,
                  "hackable_back_and_forth_moves": count_back_and_forth(hack_agent, args.map, "hackable"),
                  "shaping_theory_check": shaping_policy_check(args.map)}
-    save_csv(table, run_dir / "summary.csv")
+    save_dataframe_csv(table, run_dir / "summary.csv")
     report = df_to_markdown_table(table) + "\n\n" + "\n".join(f"- {k}: {v}" for k, v in extra.items())
     write_text(report, run_dir / "summary.md")
-    save_config_json({"args": vars(args), "episodes": episodes, "seeds": seeds, "start": START, **extra},
+    save_config_with_metadata({"args": vars(args), "episodes": episodes, "seeds": seeds, "start": START, **extra},
                      run_dir / "config.json")
     print(report)
     return table

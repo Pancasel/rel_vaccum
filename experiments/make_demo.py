@@ -36,7 +36,7 @@ from tabular.common import TabularAgent, TabularConfig  # noqa: E402
 from tabular.q_learning import QLearningAgent  # noqa: E402
 from tabular.state_space import build_state_graph  # noqa: E402
 from tabular.value_iteration import VIAgent, value_iteration  # noqa: E402
-from utils.paths import ROOT  # noqa: E402
+from project_utils.project_paths import PROJECT_ROOT  # noqa: E402
 
 FPS = 6
 MAX_GIF_FRAMES = 160  # giới hạn số khung để GIF nhẹ (< 5 MB)
@@ -167,8 +167,8 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     if args.quick:
         paths = train_quick_models(out / "_quick_models", args.map)
     else:
-        paths = {"qtable": ROOT / args.qtable_dir, "dqn_map": ROOT / args.dqn_map_dir,
-                 "dqn_random": ROOT / args.dqn_random_dir}
+        paths = {"qtable": PROJECT_ROOT / args.qtable_dir, "dqn_map": PROJECT_ROOT / args.dqn_map_dir,
+                 "dqn_random": PROJECT_ROOT / args.dqn_random_dir}
     grid, start = get_map(args.map), tuple(args.start)
     hint_map = f"python -m experiments.run_deep --map {args.map} --timesteps 500000"
     rows: list[dict[str, Any]] = []

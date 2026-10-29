@@ -27,7 +27,7 @@ from experiments.plots import df_to_markdown_table, plot_state_explosion, plot_t
 from tabular.common import TabularConfig  # noqa: E402
 from tabular.q_learning import QLearningAgent  # noqa: E402
 from tabular.state_space import count_reachable_states  # noqa: E402
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 COUNT_SIZES = [(2, 2), (2, 3), (3, 3), (3, 4), (4, 4), (4, 5)]
 BOUND_ONLY_SIZES = [(5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10)]
@@ -108,7 +108,7 @@ def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
     out = resolve_out(args.out)
     sizes = COUNT_SIZES[:3] if args.quick else COUNT_SIZES
     counts = count_states(sizes, BOUND_ONLY_SIZES, args.count_time_limit_s)
-    save_csv(counts, out / "state_explosion.csv")
+    save_dataframe_csv(counts, out / "state_explosion.csv")
     plot_state_explosion(counts, out / "figures" / "state_explosion.png")
     print(df_to_markdown_table(counts, float_fmt=".3g"))
     tables = {"counts": counts}
@@ -118,13 +118,13 @@ def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
         results = run_parallel(train_with_budget, [{"map_name": m, "budget_min": budget, "seed": args.seed}
                                                    for m in maps], workers=args.workers)
         scaling = scaling_table(results)
-        save_csv(scaling, out / "tabular" / "scaling.csv")
+        save_dataframe_csv(scaling, out / "tabular" / "scaling.csv")
         train_df = pd.concat([r["train"].assign(map=r["map"]) for r in results], ignore_index=True)
         eval_df = pd.concat([r["eval"].assign(map=r["map"]) for r in results], ignore_index=True)
         plot_tabular_scaling(train_df, eval_df, out / "figures" / "tabular_scaling.png")
         print(df_to_markdown_table(scaling, float_fmt=".3g"))
         tables["scaling"] = scaling
-    save_config_json({"args": vars(args), "count_sizes": sizes}, out / "state_explosion_config.json")
+    save_config_with_metadata({"args": vars(args), "count_sizes": sizes}, out / "state_explosion_config.json")
     return tables
 
 

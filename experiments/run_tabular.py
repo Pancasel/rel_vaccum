@@ -24,7 +24,7 @@ from experiments.evaluate import evaluate, summarize  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_learning_curves, plot_q_convergence  # noqa: E402
 from tabular.common import TabularAgent, TabularConfig  # noqa: E402
 from tabular.q_learning import QLearningAgent  # noqa: E402
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 ALGOS: dict[str, type[TabularAgent]] = {"q_learning": QLearningAgent}
 FINAL_EVAL_EPISODES_RANDOM_START: int = 50
@@ -58,7 +58,7 @@ def train_one(algo: str, map_name: str, start: tuple[int, int] | None, reward: s
     train_log, eval_log = agent.train(factory, log_dir=log_dir)
     n_final = 1 if start is not None else FINAL_EVAL_EPISODES_RANDOM_START
     final = evaluate(agent, factory, n_final, seed=1000 + cfg["seed"], gamma=cfg["gamma"])
-    save_csv(final, Path(log_dir) / f"seed{cfg['seed']}_final.csv")
+    save_dataframe_csv(final, Path(log_dir) / f"seed{cfg['seed']}_final.csv")
     return {"algo": algo, "seed": cfg["seed"], "train": train_log, "eval": eval_log, "final": final}
 
 
@@ -143,9 +143,9 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     optimum = optimal_steps_by_start(get_map(args.map))
     table = summarize_runs(results, optimum)
-    save_csv(table, run_dir / "summary.csv")
+    save_dataframe_csv(table, run_dir / "summary.csv")
     figures = make_figures(results, args, start, out / "figures")
-    save_config_json({"args": vars(args), "episodes": episodes, "seeds": seeds, "eval_every": eval_every,
+    save_config_with_metadata({"args": vars(args), "episodes": episodes, "seeds": seeds, "eval_every": eval_every,
                       "eval_episodes": eval_episodes, "start": start}, run_dir / "config.json")
     print(df_to_markdown_table(table))
     for path in figures:

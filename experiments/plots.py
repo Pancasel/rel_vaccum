@@ -10,7 +10,7 @@ import os
 import re
 from pathlib import Path
 
-from utils.paths import ROOT, assert_inside_root, setup_local_caches
+from project_utils.project_paths import PROJECT_ROOT, require_path_inside_project, setup_local_caches
 
 setup_local_caches()
 
@@ -58,7 +58,7 @@ def _tidy_x_axis(ax: plt.Axes) -> None:
 
 
 def _save(fig: plt.Figure, out_path: str | os.PathLike) -> Path:
-    path = assert_inside_root(out_path)
+    path = require_path_inside_project(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()
     fig.savefig(path, dpi=DPI)
@@ -66,7 +66,7 @@ def _save(fig: plt.Figure, out_path: str | os.PathLike) -> Path:
     return path
 
 
-def load_runs(pattern: str, root: str | os.PathLike = ROOT) -> pd.DataFrame:
+def load_runs(pattern: str, root: str | os.PathLike = PROJECT_ROOT) -> pd.DataFrame:
     """Đọc nhiều CSV theo mẫu glob (tính từ root), thêm cột 'seed' lấy từ tên file 'seed<N>'.
 
     Raises:
@@ -254,7 +254,7 @@ def plot_visit_heatmaps(visits: dict[str, np.ndarray], grid: np.ndarray, out_pat
     if image is not None:
         fig.colorbar(image, ax=axes[0].tolist(), shrink=0.8, label="số lần đi qua")
     fig.suptitle("Số lần robot đi qua mỗi ô (đỏ đậm = lãng phí)")
-    path = assert_inside_root(out_path)
+    path = require_path_inside_project(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=DPI, bbox_inches="tight")
     plt.close(fig)
@@ -277,7 +277,7 @@ def df_to_markdown_table(df: pd.DataFrame, float_fmt: str = ".2f") -> str:
 
 def write_text(text: str, out_path: str | os.PathLike) -> Path:
     """Ghi văn bản (ví dụ bảng markdown) ra file trong thư mục dự án."""
-    path = assert_inside_root(out_path)
+    path = require_path_inside_project(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path

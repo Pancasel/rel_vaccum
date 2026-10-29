@@ -22,8 +22,8 @@ import pandas as pd
 
 from env.grid_utils import StateEncoder
 from experiments.evaluate import evaluate, summarize
-from utils.io import save_csv
-from utils.paths import assert_inside_root
+from project_utils.result_files import save_dataframe_csv
+from project_utils.project_paths import require_path_inside_project
 
 N_ACTIONS: int = 4
 TIE_TOLERANCE: float = 1e-9
@@ -149,7 +149,7 @@ class TabularAgent(ABC):
         cfg = self.cfg
         env = env_factory()
         fixed_start = getattr(env.unwrapped, "fixed_start", None)
-        log_path = assert_inside_root(log_dir) if log_dir is not None else None
+        log_path = require_path_inside_project(log_dir) if log_dir is not None else None
         if log_path is not None and 0 in cfg.checkpoint_episodes:
             self.save(log_path / "checkpoints" / "ep0.pkl")
         t0 = time.monotonic()
@@ -183,14 +183,14 @@ class TabularAgent(ABC):
         train_log, eval_log = pd.DataFrame(train_rows), pd.DataFrame(eval_rows)
         if log_path is not None:
             self.save(log_path / "checkpoints" / "final.pkl")
-            save_csv(train_log, log_path / f"seed{cfg.seed}_train.csv")
-            save_csv(eval_log, log_path / f"seed{cfg.seed}_eval.csv")
+            save_dataframe_csv(train_log, log_path / f"seed{cfg.seed}_train.csv")
+            save_dataframe_csv(eval_log, log_path / f"seed{cfg.seed}_eval.csv")
         return train_log, eval_log
 
     # ------------------------------------------------------------------ lưu / đọc
     def save(self, path: str | os.PathLike) -> Path:
         """Lưu bảng Q, cấu hình và bản đồ (pickle; bảng Q nhỏ nên file nhỏ)."""
-        resolved = assert_inside_root(path)
+        resolved = require_path_inside_project(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         payload = {"algo": self.algo_name, "config": dataclasses.asdict(self.cfg), "grid": self.grid,
                    "q": {k: v.copy() for k, v in self.q.items()}}

@@ -2,13 +2,13 @@
 
 **REL301 – FA26 · hình thức Applications.** Dạy một robot hút bụi ảo tự học cách dọn hết căn phòng
 dạng lưới với ít bước nhất, bằng **Q-learning** (phòng nhỏ) và **Deep Q-learning / DQN** (phòng lớn,
-phòng chưa từng thấy). Kế hoạch: [PLAN_rel.md](PLAN_rel.md) (cái gì, vì sao) và
-[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) (làm thế nào).
+phòng chưa từng thấy). Kế hoạch: [PLAN_rel.md](docs/PLAN_rel.md) (cái gì, vì sao) và
+[IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) (làm thế nào).
 
 ![Cuộc đua các robot trên phòng 8x8](results/demo/compare_furniture_8x8.gif)
 
 <!-- RESULTS_START -->
-**Báo cáo đầy đủ (tiếng Việt):** mở [BAO_CAO_DU_AN.html](BAO_CAO_DU_AN.html) trong trình duyệt.
+**Báo cáo đầy đủ (tiếng Việt):** mở [BAO_CAO_DU_AN.html](docs/BAO_CAO_DU_AN.html) trong trình duyệt.
 
 ## Kết quả chính
 
@@ -147,7 +147,7 @@ deep/         CNN, replay buffer, DQN
 experiments/  đánh giá, các script thí nghiệm, vẽ hình, demo, reproduce_all
 tests/        pytest (đơn vị + chạy thử toàn bộ luồng)
 results/      CSV, hình, GIF (mô hình .pt/.pkl không commit)
-utils/        đường dẫn, seed, ghi file
+project_utils/  đường dẫn, seed, ghi file kết quả
 ```
 
 ## 8. Giới hạn

@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from utils.paths import ROOT, assert_inside_root, setup_local_caches
+from project_utils.project_paths import PROJECT_ROOT, require_path_inside_project, setup_local_caches
 
 
 def configure_console() -> None:
@@ -42,11 +42,11 @@ def add_common_args(parser: argparse.ArgumentParser, default_out: str) -> None:
 
 
 def resolve_out(out: str | os.PathLike) -> Path:
-    """Đường dẫn tuyệt đối của thư mục kết quả (tương đối thì tính từ ROOT); tạo nếu chưa có."""
+    """Đường dẫn tuyệt đối của thư mục kết quả (tương đối thì tính từ PROJECT_ROOT); tạo nếu chưa có."""
     path = Path(out)
     if not path.is_absolute():
-        path = ROOT / path
-    resolved = assert_inside_root(path)
+        path = PROJECT_ROOT / path
+    resolved = require_path_inside_project(path)
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
 

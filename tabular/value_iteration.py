@@ -16,7 +16,7 @@ import numpy as np
 
 from env.grid_utils import decode_obs
 from tabular.state_space import StateGraph
-from utils.paths import assert_inside_root
+from project_utils.project_paths import require_path_inside_project
 
 TIE_TOLERANCE: float = 1e-9
 
@@ -116,7 +116,7 @@ class VIAgent:
 
 def save_vi_result(result: VIResult, path: str | os.PathLike) -> Path:
     """Lưu kết quả VI (pickle) để các thí nghiệm sau dùng lại mà không phải tính lại."""
-    resolved = assert_inside_root(path)
+    resolved = require_path_inside_project(path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     with resolved.open("wb") as f:
         pickle.dump(result, f)

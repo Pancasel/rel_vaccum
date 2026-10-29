@@ -28,7 +28,7 @@ from env.maps import FIXED_MAPS, generate_map_set, get_map  # noqa: E402
 from env.vacuum_env import RandomMapVacuumEnv, RewardConfig, VacuumEnv  # noqa: E402
 from experiments.evaluate import evaluate, evaluate_on_maps, summarize  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_learning_curves  # noqa: E402
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 TEST_SET_SEED = 3000
 TRAIN_POOL_SEED = 2000
@@ -120,7 +120,7 @@ def train_one(spec: dict[str, Any], cfg: dict[str, Any], log_dir: str,
     agent = DQNAgent(obs_shape, DQNConfig(**cfg))
     logs = agent.train(factory, log_dir)
     final = final_evaluation(agent, spec, cfg["seed"], test_maps)
-    save_csv(final, Path(log_dir) / "final_eval.csv")
+    save_dataframe_csv(final, Path(log_dir) / "final_eval.csv")
     return {"seed": cfg["seed"], "eval": logs["eval"], "final": final}
 
 
@@ -231,7 +231,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
 
     optimum = optimal_steps_by_start(get_map(spec["map"])) if test_maps is None else None
     table = summarize_seeds(results, optimum)
-    save_csv(table, run_dir / "summary.csv")
+    save_dataframe_csv(table, run_dir / "summary.csv")
     refs = baseline_references(spec, test_maps)
     eval_df = pd.concat([r["eval"].assign(seed=r["seed"], algo="dqn") for r in results], ignore_index=True)
     figure = plot_learning_curves(
@@ -239,7 +239,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
                                  ("steps_mean", "số bước (chính sách tham lam)")], "algo",
         out / "figures" / f"deep_learning_curve_{tag}.png",
         f"DQN trên {tag}", "bước huấn luyện", hlines={"steps_mean": refs})
-    save_config_json({"args": vars(args), "spec": {k: v for k, v in spec.items() if k not in ("pool", "exclude")},
+    save_config_with_metadata({"args": vars(args), "spec": {k: v for k, v in spec.items() if k not in ("pool", "exclude")},
                       "n_test_maps": len(test_maps) if test_maps else 0, "seeds": seeds, "timesteps": timesteps},
                      run_dir / "config.json")
     print(df_to_markdown_table(table))

@@ -13,7 +13,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from env.maps import OBSTACLE
-from utils.paths import assert_inside_root
+from project_utils.project_paths import require_path_inside_project
 
 CELL_PX: int = 32
 COLORS: dict[str, tuple[int, int, int]] = {
@@ -174,7 +174,7 @@ def save_gif(frames: list[np.ndarray], path: str | os.PathLike, fps: int = 4,
         raise ValueError("Không có khung hình nào để ghi GIF.")
     if fps <= 0:
         raise ValueError(f"fps phải dương, nhận được {fps}.")
-    resolved = assert_inside_root(path)
+    resolved = require_path_inside_project(path)
     resolved.parent.mkdir(parents=True, exist_ok=True)
     images = [Image.fromarray(f) for f in frames]
     duration = [1000 // fps] * len(images)
@@ -215,7 +215,7 @@ def demo_random_gif(map_name: str, path: str | os.PathLike, seed: int = 0) -> Pa
 
     env = VacuumEnv(map_name, render_mode="rgb_array")
     record_episode(RandomWalkAgent(seed=seed), env, path, seed=seed)
-    return assert_inside_root(path)
+    return require_path_inside_project(path)
 
 
 def visit_heatmap(visits: np.ndarray, grid: np.ndarray, ax: Any = None, vmax: float | None = None) -> Any:

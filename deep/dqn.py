@@ -32,9 +32,9 @@ from deep.networks import QNetwork, count_parameters
 from env.grid_utils import egocentric_shape, egocentric_view
 from deep.replay_buffer import ReplayBuffer
 from experiments.evaluate import evaluate, summarize
-from utils.io import save_csv
-from utils.paths import assert_inside_root
-from utils.seeding import set_global_seed
+from project_utils.result_files import save_dataframe_csv
+from project_utils.project_paths import require_path_inside_project
+from project_utils.random_seeding import set_global_seed
 
 N_ACTIONS: int = 4
 EVAL_SEED_OFFSET: int = 1000  # seed đánh giá cố định qua các lần đánh giá để đường cong so sánh được
@@ -258,7 +258,7 @@ class DQNAgent:
             dict các DataFrame "episodes", "losses", "eval".
         """
         cfg = self.cfg
-        log_path = assert_inside_root(log_dir)
+        log_path = require_path_inside_project(log_dir)
         log_path.mkdir(parents=True, exist_ok=True)
         eval_factory = eval_env_factory or env_factory
         set_global_seed(cfg.seed)
@@ -334,16 +334,16 @@ class DQNAgent:
                 row["selected"] = row["global_step"] == best_step
         logs = {"episodes": pd.DataFrame(episode_rows), "losses": pd.DataFrame(loss_rows),
                 "eval": pd.DataFrame(eval_rows)}
-        save_csv(logs["episodes"], log_path / "train_episodes.csv")
-        save_csv(logs["losses"], log_path / "train_losses.csv")
-        save_csv(logs["eval"], log_path / "eval.csv")
+        save_dataframe_csv(logs["episodes"], log_path / "train_episodes.csv")
+        save_dataframe_csv(logs["losses"], log_path / "train_losses.csv")
+        save_dataframe_csv(logs["eval"], log_path / "eval.csv")
         self.save(log_path / "model.pt")
         return logs
 
     # ------------------------------------------------------------------ lưu / đọc
     def save(self, path: str | os.PathLike) -> Path:
         """Lưu trọng số mạng online, cấu hình và shape observation."""
-        resolved = assert_inside_root(path)
+        resolved = require_path_inside_project(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"state_dict": self.online.state_dict(), "config": dataclasses.asdict(self.cfg),
                     "obs_shape": self.obs_shape, "n_parameters": count_parameters(self.online)}, resolved)

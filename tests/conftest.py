@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from utils.paths import setup_local_caches
+from project_utils.project_paths import setup_local_caches
 
 # Phải gọi trước khi bất kỳ test nào import matplotlib.
 setup_local_caches()

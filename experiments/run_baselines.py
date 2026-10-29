@@ -17,7 +17,7 @@ from baselines import BASELINES, make_baseline  # noqa: E402
 from env.maps import FIXED_MAPS  # noqa: E402
 from experiments.evaluate import evaluate, summarize  # noqa: E402
 from experiments.plots import df_to_markdown_table  # noqa: E402
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 DEFAULT_MAPS = ["empty_3x3", "obstacle_4x4", "furniture_8x8"]
 
@@ -44,15 +44,15 @@ def run(args: argparse.Namespace) -> pd.DataFrame:
         for agent_name in args.agents:
             for seed in seeds:
                 df = evaluate(make_baseline(agent_name, seed=seed), factory, episodes, seed=seed)
-                save_csv(df, out / map_name / agent_name / f"seed{seed}.csv")
+                save_dataframe_csv(df, out / map_name / agent_name / f"seed{seed}.csv")
                 df.insert(0, "seed", seed)
                 df.insert(0, "agent", agent_name)
                 df.insert(0, "map", map_name)
                 all_rows.append(df)
     full = pd.concat(all_rows, ignore_index=True)
     summary = summarize(full, ["map", "agent"])
-    save_csv(summary, out / "summary.csv")
-    save_config_json({"maps": args.maps, "agents": args.agents, "seeds": seeds, "episodes": episodes,
+    save_dataframe_csv(summary, out / "summary.csv")
+    save_config_with_metadata({"maps": args.maps, "agents": args.agents, "seeds": seeds, "episodes": episodes,
                       "start": start}, out / "config.json")
     return summary
 

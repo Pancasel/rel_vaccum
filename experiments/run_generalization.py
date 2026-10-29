@@ -26,7 +26,7 @@ from experiments.evaluate import evaluate_on_maps, summarize  # noqa: E402
 from experiments.plots import df_to_markdown_table, plot_bar_with_error, plot_lines_with_error, write_text  # noqa: E402
 from experiments.run_deep import (TEST_SET_SEED, TRAIN_POOL_SEED, check_reward_args, reward_config_of,  # noqa: E402
                                   train_one, train_tag, variant_tag)
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 BASELINE_NAMES = ["random_walk", "zigzag", "greedy_bfs"]
 EPISODES_PER_TEST_MAP = 2
@@ -127,7 +127,7 @@ def run_density(args: argparse.Namespace, out: Path, seeds: list[int], timesteps
                           "agent", out / "figures" / f"e3_density_{h}x{w}{args.tag}.png",
                           f"E3: DQN và baseline trên phòng {h}x{w} khi tăng mật độ vật cản "
                           f"(trung bình ± std qua {len(seeds)} seed)", "mật độ vật cản")
-    save_csv(table, out / "density" / f"e3_density_{h}x{w}{args.tag}.csv")
+    save_dataframe_csv(table, out / "density" / f"e3_density_{h}x{w}{args.tag}.csv")
     return table
 
 
@@ -163,7 +163,7 @@ def run_generalization(args: argparse.Namespace, out: Path, seeds: list[int], ti
     plot_bar_with_error(table, "K", "coverage_mean", "coverage_mean_sd", out / "figures" / f"e4_generalization_{h}x{w}{args.tag}.png",
                         f"E4: DQN huấn luyện trên K phòng, đo trên phòng đã gặp và chưa gặp ({h}x{w}, mật độ {density:g})",
                         "tỷ lệ đã dọn", hue="split")
-    save_csv(table, out / "generalization" / f"e4_generalization_{h}x{w}{args.tag}.csv")
+    save_dataframe_csv(table, out / "generalization" / f"e4_generalization_{h}x{w}{args.tag}.csv")
     return table
 
 
@@ -181,7 +181,7 @@ def main(argv: list[str] | None = None) -> pd.DataFrame:
     table = (run_density if args.exp == "density" else run_generalization)(args, out, seeds, timesteps)
     text = df_to_markdown_table(table)
     write_text(text, out / args.exp / f"summary{args.tag}.md")
-    save_config_json({"args": vars(args), "seeds": seeds, "timesteps": timesteps}, out / args.exp / f"config{args.tag}.json")
+    save_config_with_metadata({"args": vars(args), "seeds": seeds, "timesteps": timesteps}, out / args.exp / f"config{args.tag}.json")
     print(text)
     return table
 

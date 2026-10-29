@@ -22,7 +22,7 @@ from experiments.evaluate import run_episode  # noqa: E402
 from experiments.plots import df_to_markdown_table  # noqa: E402
 from tabular.state_space import build_state_graph, min_steps_to_cover  # noqa: E402
 from tabular.value_iteration import greedy_rollout, save_vi_result, value_iteration  # noqa: E402
-from utils.io import save_config_json, save_csv  # noqa: E402
+from project_utils.result_files import save_config_with_metadata, save_dataframe_csv  # noqa: E402
 
 DEFAULT_MAPS = ["empty_3x3", "obstacle_4x4", "empty_4x4"]
 
@@ -72,14 +72,14 @@ def main(argv: list[str] | None = None) -> dict[str, pd.DataFrame]:
     tables: dict[str, pd.DataFrame] = {}
     for map_name in maps:
         table, meta, result = solve_map(map_name, args.gamma)
-        save_csv(table, out / f"{map_name}_summary.csv")
+        save_dataframe_csv(table, out / f"{map_name}_summary.csv")
         (out / f"{map_name}_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
         save_vi_result(result, out / f"{map_name}_vi.pkl")
         tables[map_name] = table
         print(f"\n## {map_name}: {meta['n_states']} trạng thái, {meta['n_iterations']} vòng lặp, "
               f"{meta['runtime_s']} s")
         print(df_to_markdown_table(table))
-    save_config_json({"maps": maps, "gamma": args.gamma}, out / "config.json")
+    save_config_with_metadata({"maps": maps, "gamma": args.gamma}, out / "config.json")
     return tables
 
 
